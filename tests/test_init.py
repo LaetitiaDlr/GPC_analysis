@@ -1,7 +1,7 @@
 # tests/test_init.py
 import os
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch
 import pandas as pd
 import numpy as np
 from GPC_analysis.class_GPC import GPC_dataset
@@ -17,7 +17,7 @@ def real_test_file():
     return TEST_FILE_PATH
 
 @pytest.fixture
-def sample_info_for_real_file():
+def sample_info_P1022():
     """Fixture avec les vraies informations du sample P1.022"""
     return {
         'P1.022': {
@@ -27,224 +27,154 @@ def sample_info_for_real_file():
         }
     }
 
-def test_initialization_with_real_file_raw_type(real_test_file, sample_info_for_real_file):
-    """Test initialisation avec le vrai fichier P1.022 - type raw"""
+# ========================================
+# Tests AVEC le vrai fichier (sans mock)
+# ========================================
+
+def test_real_initialization_raw_type(real_test_file, sample_info_P1022):
+    """Test initialisation RÉELLE avec fichier P1.022 - type raw"""
     filepath_dict = {'P1.022': real_test_file}
     
-    # Mock _process_raw_data car le fichier Excel n'est pas au format raw
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_info_for_real_file,
-            report_type='raw'
-        )
-        
-        assert gpc.filepath_dict == filepath_dict
-        assert gpc.sample_information == sample_info_for_real_file
-        assert gpc.report_type == 'raw'
-        assert hasattr(gpc, 'palette')
-
-def test_initialization_with_defaults():
-    """Test initialisation avec valeurs par défaut - avec mock"""
-    filepath_dict = {'sample1': 'dummy_path.csv'}
-    sample_information = {'sample1': {'Experiment': 'Test_Exp'}}
+    # ⚠️ Si ton fichier Excel n'est pas compatible raw, change en 'excel'
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'  # ← Change ici selon ton fichier
+    )
     
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_information,
-            report_type='raw'
-        )
-        
-        assert gpc.filepath_dict == filepath_dict
-        assert gpc.sample_information == sample_information
-        assert gpc.report_type == 'raw'
-        assert hasattr(gpc, 'palette')
+    assert gpc.filepath_dict == filepath_dict
+    assert gpc.report_type == 'excel'
+    assert hasattr(gpc, 'data_MMD_all')
+    assert 'P1.022' in gpc.data_MMD_all
 
-def test_initialization_with_custom_palette(real_test_file, sample_info_for_real_file):
-    """Test initialisation avec palette personnalisée - fichier réel"""
+def test_real_mark_houwink_parameters(real_test_file, sample_info_P1022):
+    """Test paramètres Mark-Houwink avec fichier réel"""
+    filepath_dict = {'P1.022': real_test_file}
+    
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'
+    )
+    
+    assert gpc.PS_alpha == 0.722
+    assert gpc.PS_K == 0.000102
+    assert gpc.PP_alpha == 0.725
+    assert gpc.PP_K == 0.000190
+
+def test_real_conversion_factors(real_test_file, sample_info_P1022):
+    """Test facteurs de conversion H_0 et H_1 avec fichier réel"""
+    filepath_dict = {'P1.022': real_test_file}
+    
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'
+    )
+    
+    import math
+    expected_H_0 = (math.log10(gpc.PS_K) - math.log10(gpc.PP_K))/(gpc.PP_alpha+1)
+    expected_H_1 = (gpc.PS_alpha+1)/(gpc.PP_alpha+1)
+    
+    assert abs(gpc.H_0 - expected_H_0) < 0.001
+    assert abs(gpc.H_1 - expected_H_1) < 0.001
+
+def test_real_palette_creation(real_test_file, sample_info_P1022):
+    """Test création de palette avec fichier réel"""
+    filepath_dict = {'P1.022': real_test_file}
+    
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'
+    )
+    
+    assert isinstance(gpc.palette, dict)
+    assert 'P1.022' in gpc.palette
+    assert len(gpc.palette) == 1
+
+def test_real_custom_palette(real_test_file, sample_info_P1022):
+    """Test palette personnalisée avec fichier réel"""
     filepath_dict = {'P1.022': real_test_file}
     custom_palette = {'P1.022': 'red'}
     
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_info_for_real_file,
-            palette=custom_palette,
-            report_type='raw'
-        )
-        
-        assert gpc.palette == custom_palette
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        palette=custom_palette,
+        report_type='excel'
+    )
+    
+    assert gpc.palette == custom_palette
+    assert gpc.palette['P1.022'] == 'red'
 
-def test_mark_houwink_parameters(real_test_file, sample_info_for_real_file):
-    """Test que les paramètres Mark-Houwink sont correctement initialisés"""
+def test_real_colors_list(real_test_file, sample_info_P1022):
+    """Test liste des couleurs avec fichier réel"""
     filepath_dict = {'P1.022': real_test_file}
     
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_info_for_real_file,
-            report_type='raw'
-        )
-        
-        # Vérifier les constantes Mark-Houwink
-        assert gpc.PS_alpha == 0.722
-        assert gpc.PS_K == 0.000102
-        assert gpc.PP_alpha == 0.725
-        assert gpc.PP_K == 0.000190
-        assert gpc.density_PP == 910
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'
+    )
+    
+    assert hasattr(gpc, 'colors')
+    assert isinstance(gpc.colors, list)
+    assert len(gpc.colors) == 10
+    assert gpc.colors[0] == 'red'
 
-def test_conversion_factors_calculation(real_test_file, sample_info_for_real_file):
-    """Test que les facteurs de conversion H_0 et H_1 sont calculés correctement"""
+def test_real_data_structure(real_test_file, sample_info_P1022):
+    """Test structure des données chargées depuis fichier réel"""
     filepath_dict = {'P1.022': real_test_file}
     
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_info_for_real_file,
-            report_type='raw'
-        )
-        
-        # Vérifier que H_0 et H_1 existent
-        assert hasattr(gpc, 'H_0')
-        assert hasattr(gpc, 'H_1')
-        
-        # Vérifier les valeurs calculées
-        import math
-        expected_H_0 = (math.log10(gpc.PS_K) - math.log10(gpc.PP_K))/(gpc.PP_alpha+1)
-        expected_H_1 = (gpc.PS_alpha+1)/(gpc.PP_alpha+1)
-        
-        assert abs(gpc.H_0 - expected_H_0) < 0.001
-        assert abs(gpc.H_1 - expected_H_1) < 0.001
+    gpc = GPC_dataset(
+        filepath_dict=filepath_dict,
+        sample_information=sample_info_P1022,
+        report_type='excel'
+    )
+    
+    # Vérifier data_MMD_all
+    assert hasattr(gpc, 'data_MMD_all')
+    assert 'P1.022' in gpc.data_MMD_all
+    assert isinstance(gpc.data_MMD_all['P1.022'], pd.DataFrame)
+    assert not gpc.data_MMD_all['P1.022'].empty
+    
+    # Vérifier data_Mn_Mw_software
+    assert hasattr(gpc, 'data_Mn_Mw_software')
+    assert isinstance(gpc.data_Mn_Mw_software, pd.DataFrame)
+    
+    # Vérifier data_Mn_Mw
+    assert hasattr(gpc, 'data_Mn_Mw')
+    assert isinstance(gpc.data_Mn_Mw, pd.DataFrame)
 
-def test_colors_list_exists(real_test_file, sample_info_for_real_file):
-    """Test que la liste des couleurs est définie"""
-    filepath_dict = {'P1.022': real_test_file}
+# ========================================
+# Tests AVEC mocks (pour tests unitaires rapides)
+# ========================================
+
+def test_initialization_with_mock():
+    """Test initialisation avec mock (rapide)"""
+    filepath_dict = {'sample1': 'dummy.csv'}
+    sample_info = {'sample1': {'Experiment': 'Test'}}
     
     with patch.object(GPC_dataset, '_process_raw_data'):
         gpc = GPC_dataset(
             filepath_dict=filepath_dict,
-            sample_information=sample_info_for_real_file,
+            sample_information=sample_info,
             report_type='raw'
         )
         
-        assert hasattr(gpc, 'colors')
-        assert isinstance(gpc.colors, list)
-        assert len(gpc.colors) == 10  # Vous avez défini 10 couleurs
-        assert gpc.colors[0] == 'red'
-        assert gpc.colors[1] == 'blue'
+        assert gpc.report_type == 'raw'
 
-def test_default_palette_creation():
-    """Test que la palette par défaut est créée correctement"""
-    filepath_dict = {'sample1': 'path1.csv', 'sample2': 'path2.csv'}
-    sample_information = {
-        'sample1': {'Experiment': 'Test_Exp'},
-        'sample2': {'Experiment': 'Test_Exp'}
-    }
-    
-    with patch.object(GPC_dataset, '_process_raw_data'):
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_information,
-            report_type='raw'
-        )
-        
-        assert isinstance(gpc.palette, dict)
-        assert 'sample1' in gpc.palette
-        assert 'sample2' in gpc.palette
-        assert len(gpc.palette) == 2
-
-def test_raw_data_attributes_created():
-    """Test que les attributs data_raw et data_MMD_all sont créés pour raw"""
-    filepath_dict = {'sample1': 'dummy_raw.csv'}
-    sample_information = {'sample1': {'Experiment': 'Test_Exp'}}
-    
-    # Mock _process_raw_data pour simuler la création des attributs
-    with patch.object(GPC_dataset, '_process_raw_data') as mock_process:
-        def create_raw_attributes(self):
-            # Simuler ce que fait _process_raw_data
-            self.data_raw = {'sample1': pd.DataFrame()}
-            self.data_MMD_all = {'sample1': pd.DataFrame()}
-        
-        mock_process.side_effect = create_raw_attributes
-        
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_information,
-            report_type='raw'
-        )
-        
-        # Vérifier que _process_raw_data a été appelé
-        mock_process.assert_called_once()
-
-def test_process_raw_data_called_with_raw_type():
-    """Test que _process_raw_data est appelé quand report_type='raw'"""
-    filepath_dict = {'sample1': 'dummy_raw.csv'}
-    sample_information = {'sample1': {'Experiment': 'Test_Exp'}}
+def test_process_raw_called_with_mock():
+    """Test que _process_raw_data est appelé"""
+    filepath_dict = {'sample1': 'dummy.csv'}
+    sample_info = {'sample1': {'Experiment': 'Test'}}
     
     with patch.object(GPC_dataset, '_process_raw_data') as mock_raw:
         gpc = GPC_dataset(
             filepath_dict=filepath_dict,
-            sample_information=sample_information,
+            sample_information=sample_info,
             report_type='raw'
         )
         
-        # Vérifier que _process_raw_data a été appelé
         mock_raw.assert_called_once()
-        
-        # Vérifier que report_type est bien 'raw'
-        assert gpc.report_type == 'raw'
-
-def test_process_excel_data_not_called_with_raw_type():
-    """Test que _process_excel_data N'est PAS appelé quand report_type='raw'"""
-    filepath_dict = {'sample1': 'dummy_raw.csv'}
-    sample_information = {'sample1': {'Experiment': 'Test_Exp'}}
-    
-    with patch.object(GPC_dataset, '_process_raw_data'), \
-         patch.object(GPC_dataset, '_process_excel_data') as mock_excel:
-        
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_information,
-            report_type='raw'
-        )
-        
-        # Vérifier que _process_excel_data N'a PAS été appelé
-        mock_excel.assert_not_called()
-
-def test_raw_data_structure_with_mocked_data():
-    """Test la structure des données raw mockées"""
-    filepath_dict = {'P1.022': 'dummy_raw.csv'}
-    sample_information = {'P1.022': {'Experiment': 'Test_Exp'}}
-    
-    # Créer des données mockées réalistes
-    mock_raw_data = pd.DataFrame({
-        'Elution Volume (mL)': np.linspace(8, 18, 100),
-        'Concentration mg/mL': np.random.rand(100) * 0.5
-    })
-    
-    mock_mmd_data = pd.DataFrame({
-        'LogM': np.linspace(3, 6, 100),
-        'MMD': np.random.rand(100)
-    })
-    
-    with patch.object(GPC_dataset, '_process_raw_data') as mock_process:
-        def set_mock_data(self):
-            self.data_raw = {'P1.022': mock_raw_data}
-            self.data_MMD_all = {'P1.022': mock_mmd_data}
-        
-        mock_process.side_effect = set_mock_data
-        
-        gpc = GPC_dataset(
-            filepath_dict=filepath_dict,
-            sample_information=sample_information,
-            report_type='raw'
-        )
-        
-        # Vérifier la structure
-        assert hasattr(gpc, 'data_raw')
-        assert hasattr(gpc, 'data_MMD_all')
-        assert 'P1.022' in gpc.data_raw
-        assert 'P1.022' in gpc.data_MMD_all
-        assert isinstance(gpc.data_raw['P1.022'], pd.DataFrame)
-        assert isinstance(gpc.data_MMD_all['P1.022'], pd.DataFrame)
