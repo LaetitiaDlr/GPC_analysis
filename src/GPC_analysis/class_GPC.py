@@ -80,7 +80,8 @@ class GPC_dataset:
 
     def __init__(self, filepath_dict, sample_information,
                 palette=None, report_type='raw',
-                int_x_range=[14, 26], baseline_window = [10, 31], ):
+                int_x_range=[14, 26], baseline_window = [10, 31], 
+                polymer = 'PP'):
         """
         Initialize GPC dataset analysis.
         
@@ -117,8 +118,9 @@ class GPC_dataset:
         self.report_type = report_type
         # Mark-Houwink parameters
         self.PS_alpha, self.PS_K = 0.722, 0.000102
-        self.PP_alpha, self.PP_K = 0.725, 0.000190
-        self.density_PP = 910  # g/L
+        if polymer == 'PP':
+            self.PP_alpha, self.PP_K = 0.725, 0.000190
+            self.density_PP = 910  # g/L
         
         # Calculate conversion factors
         self.H_0 = (math.log10(self.PS_K) - math.log10(self.PP_K))/(self.PP_alpha+1)
@@ -671,7 +673,7 @@ class GPC_dataset:
         
         return fig, ax
 
-    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label='Beads Type', rotation=75):
+    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label=None, rotation=75):
         """
         Plotting scatter plots for Mw and Mn.
         """
@@ -689,13 +691,18 @@ class GPC_dataset:
             x_vals.append(x_val)
 
             # build legend string: "Experiment — <label>"
-            exp_str = str(self.sample_information[exp_name].get('Experiment', exp_name))
-            label_val = str(self.sample_information[exp_name].get(label, ''))
-            legend_str = f"{exp_str} — {label_val}"
+            
+            if label != None:
+                exp_str = str(self.sample_information[exp_name].get('Experiment', exp_name))
+                label_val = str(self.sample_information[exp_name].get(label, ''))
+                legend_str = f"{exp_str} — {label_val}"
 
             # plot points; give each point its legend entry
-            ax1.scatter(x_vals[i], mw_data[exp_name], label=legend_str, s=50, alpha=0.8)
-            ax2.scatter(x_vals[i], mn_data[exp_name], label=legend_str, s=50, alpha=0.8)
+                ax1.scatter(x_vals[i], mw_data[exp_name], label=legend_str, s=50, alpha=0.8)
+                ax2.scatter(x_vals[i], mn_data[exp_name], label=legend_str, s=50, alpha=0.8)
+            else:
+                ax1.scatter(x_vals[i], mw_data[exp_name], s=50, alpha=0.8)
+                ax2.scatter(x_vals[i], mn_data[exp_name], s=50, alpha=0.8)
             i += 1
 
         ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
@@ -718,56 +725,12 @@ class GPC_dataset:
         plt.tight_layout()
         ax1.tick_params(axis='x', labelrotation=rotation)
         ax2.tick_params(axis='x', labelrotation=rotation)
-        # show legend (may be long if many samples)
-        ax1.legend()
-        ax2.legend()
+        # show legend only if label parameter is provided
+        if label is not None:
+            ax1.legend()
+            ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_scatter_(self, data_Mw_Mn_all, xlabel = 'Experiment', rotation=75):
-        """
-        Plotting scatter plots for Mw and Mn.
-        Parameters
-        ----------
-        data_Mw_Mn_all : DataFrame
-            DataFrame containing Mw and Mn data for all samples.
-        xlabel : str
-            Label for the x-axis.
-            can be 'Milling Time (s)' or 'Experiment' or 'Mass of PP (g)' 
-        rotation : int, optional
-            Rotation angle for x-axis labels. Default is 75.
-        write_title : bool, optional
-            If True, adds a title to the figure, must add a title string as fig_title = --- . Default is False.
-        ylimMw and ylimMn : list, optional
-            Limits for the y-axis of the Mw and Mn plots. Default is None.
-        fig_title : str, optional
-            Title of the figure. Default is None.
-        filepath_figure_saving : str, optional
-            Path where the figure will be saved. Default is None.
-        """
-        data_Mw_Mn_all = self.calculate_Mn_Mw_raw_data(xlabel=xlabel)
-
-        mw_data = data_Mw_Mn_all['Mw']#.groupby(xlabel)['Mw'].apply(list) #, sort=False
-        mn_data = data_Mw_Mn_all['Mn']#.groupby(xlabel)['Mn'].apply(list)
-        fig, (ax1,ax2) = plt.subplots(1,2,figsize=(8, 5))#, dpi=300)
-        x_vals = []
-        i=0
-
-        for exp_name in mw_data.index:
-            x_vals.append(self.sample_information[exp_name][xlabel])
-            ax1.scatter(x_vals[i], mw_data[exp_name])
-            ax2.scatter(x_vals[i], mn_data[exp_name])
-            i += 1
-        ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
-        ax1.set_xticks(x_vals)
-        # ax1.set_xticklabels(mw_data.index, rotation=rotation)
-        ax2.set_xticks(x_vals)
-        ax1.set_xlabel(xlabel)
-        ax2.set_xlabel(xlabel)
-        # ax2.set_xticklabels(mn_data.index, rotation=rotation)
-        plt.tight_layout()
-        plt.legend()
-        return fig, ax1, ax2
-
     def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, xlabel = 'Experiment', rotation=75):
         """
         Plotting boxplots for Mw and Mn.
