@@ -706,6 +706,9 @@ class GPC_dataset:
             i += 1
 
         ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
+        ax2.set_ylabel(r'$\bf{Mn}\ \it{(g/mol)}$')
+        ax1.set_xlabel(f'{xlabel}')
+        ax2.set_xlabel(f'{xlabel}')
 
         # set xticks using unique ordered values to avoid duplicate-tick issues
         unique_x = []
