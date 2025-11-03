@@ -620,7 +620,7 @@ class GPC_dataset:
 
         print(f"Results saved in {filepath_saving}")
 
-    def plotting_MMD_Mw(self, data_MMD, scale, xlabel = 'Experiment'):
+    def plotting_MMD_Mw(self, data_MMD, scale, label1 = 'Experiment', label2 = None, label3 = None,):
 
         """
         Plotting Molar Mass Distribution (MMD) against Molar Mass (Mw).
@@ -652,7 +652,11 @@ class GPC_dataset:
         for sample_name, df in data_MMD.items():
             exp_name = self.sample_information[sample_name]['Experiment']
             df_not_log = 10 ** df.index
-            label_name = self.sample_information[sample_name][xlabel]
+            label_name = self.sample_information[sample_name][label1]
+            if label2 is not None:
+                label_name += f' — {self.sample_information[sample_name][label2]}'
+            if label3 is not None:
+                label_name += f' — {self.sample_information[sample_name][label3]}'
             if label_name not in seen_labels:
                 seen_labels.add(label_name)
                 ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[sample_name])#, marker = 'o', markersize = 1)
