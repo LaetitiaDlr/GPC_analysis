@@ -8,46 +8,110 @@ import numpy as np
 class GPC_dataset:
     """
     A class to handle GPC dataset analysis and visualization.
+    
+    This class processes GPC (Gel Permeation Chromatography) data from Excel files,
+    performs baseline correction, calculates molecular weight distributions (MMD),
+    and computes Mw, Mn, and PDI values.
+    
     Parameters
     ----------
     filepath_dict : dict
-        Dictionary containing paths to the reference and sample data files.
-    experiment : str
-        Name of the experiment.
-    files_to_analyse : list
-        List of files to analyze.
-    palette : dict
-        Color palette for the plots.
-    report_type : str
-        Type of report to extract data ('excel' or 'raw'). Default is 'excel'.
-    label_dict : dict, optional
-        Dictionary mapping file names to labels.
+        Dictionary mapping sample names to their file paths.
+        Example: {'Sample1': 'path/to/file1.xlsx', 'Sample2': 'path/to/file2.xlsx'}
+        
+    sample_information : dict
+        Dictionary mapping sample names to their metadata. Each sample must have
+        at least an 'Experiment' key. The sample names MUST match the keys in filepath_dict.
+        
+        **Required structure:**
+        {
+            'SampleName1': {
+                'Experiment': str,  # Required - experiment identifier
+                'Sample': str,      # Optional - sample identifier
+                # ... other custom fields
+            },
+            'SampleName2': {
+                'Experiment': str,
+                'Sample': str,
+            }
+        }
+        
+        Example:
+        {
+            'P1.022': {
+                'Experiment': 'DDV418',
+                'Sample': 'P1.022',
+                'Milling Time (s)': 3600,
+                'Beads Type': 'Steel'
+            }
+        }
+        
+    palette : dict, optional
+        Dictionary mapping sample names to colors for plotting.
+        If None, a default color palette will be generated.
+        Example: {'Sample1': 'red', 'Sample2': 'blue'}
+        
+    report_type : str, optional
+        Type of report to process. Options are:
+        - 'raw' (default): Process raw GPC data with baseline correction
+        - 'excel': Use pre-processed data from Excel report
+        
+    Raises
+    ------
+    ValueError
+        If filepath_dict is empty
+        If sample_information is missing required keys
+        If sample names don't match between filepath_dict and sample_information
+    TypeError
+        If inputs are not of the expected types
+        
+    Examples
+    --------
+    >>> filepath_dict = {
+    ...     'Sample1': 'data/sample1.xlsx',
+    ...     'Sample2': 'data/sample2.xlsx'
+    ... }
+    >>> sample_info = {
+    ...     'Sample1': {'Experiment': 'Exp1', 'Sample': 'Sample1'},
+    ...     'Sample2': {'Experiment': 'Exp1', 'Sample': 'Sample2'}
+    ... }
+    >>> gpc = GPC_dataset(filepath_dict, sample_info, report_type='raw')
     """
 
     def __init__(self, filepath_dict, sample_information,
-                palette=None, report_type='raw'):
+                palette=None, report_type='raw',
+                int_x_range=[14, 26], baseline_window = [10, 31], ):
         """
         Initialize GPC dataset analysis.
         
         Parameters
         ----------
         filepath_dict : dict
-            Dictionary mapping file names to their paths
-        experiment : str
-            Name of the experiment
-        files_to_analyse : list or str
-            List of files to analyze or 'all'
+            Dictionary mapping sample names to their file paths.
+            Keys must match those in sample_information.
+            
+        sample_information : dict
+            Dictionary mapping sample names to metadata dictionaries.
+            Each sample dict must contain at least 'Experiment' key.
+            Keys must match those in filepath_dict.
+            
         palette : dict, optional
-            Color palette for plots
+            Custom color palette for plots. If None, auto-generated.
+            
         report_type : str, optional
-            'raw' or 'excel', defaults to 'raw'
-        mass_PP : float, optional
-            Mass of PP in grams
-        sample_information : dict, optional
-            Custom information for samples
-        milling_dict : dict, optional
-            Custom milling times
+            'raw' for raw data processing or 'excel' for pre-processed data.
+            Default is 'raw'.
+            
+        Raises
+        ------
+        ValueError
+            If inputs fail validation checks.
         """
+        # Validate inputs
+        self._validate_inputs(filepath_dict, sample_information, report_type)
+        # for integration 
+        self.int_x_range = int_x_range
+        self.baseline_window = baseline_window
         self.filepath_dict = filepath_dict
         self.sample_information = sample_information
         self.report_type = report_type
@@ -76,6 +140,78 @@ class GPC_dataset:
         else:  # raw
             self._process_raw_data()
 
+    def _validate_inputs(self, filepath_dict, sample_information, report_type):
+        """
+        Validate input parameters for GPC_dataset initialization.
+        
+        Parameters
+        ----------
+        filepath_dict : dict
+            Dictionary mapping sample names to file paths
+        sample_information : dict
+            Dictionary mapping sample names to metadata dictionaries
+        report_type : str
+            Type of report ('raw' or 'excel')
+            
+        Raises
+        ------
+        TypeError
+            If inputs are not of expected types
+        ValueError
+            If dictionaries are empty, keys don't match, or required fields are missing
+        """
+        # Check types
+        if not isinstance(filepath_dict, dict):
+            raise TypeError(f"filepath_dict must be a dictionary, got {type(filepath_dict).__name__}")
+        
+        if not isinstance(sample_information, dict):
+            raise TypeError(f"sample_information must be a dictionary, got {type(sample_information).__name__}")
+        
+        if not isinstance(report_type, str):
+            raise TypeError(f"report_type must be a string, got {type(report_type).__name__}")
+        
+        # Check that dictionaries are not empty
+        if not filepath_dict:
+            raise ValueError("filepath_dict cannot be empty. Provide at least one sample file.")
+        
+        if not sample_information:
+            raise ValueError("sample_information cannot be empty. Provide metadata for all samples.")
+        
+        # Check that keys match between filepath_dict and sample_information
+        filepath_keys = set(filepath_dict.keys())
+        sample_keys = set(sample_information.keys())
+        
+        if filepath_keys != sample_keys:
+            missing_in_sample_info = filepath_keys - sample_keys
+            missing_in_filepath = sample_keys - filepath_keys
+            
+            error_msg = "Sample names must match between filepath_dict and sample_information.\n"
+            if missing_in_sample_info:
+                error_msg += f"  Missing in sample_information: {missing_in_sample_info}\n"
+            if missing_in_filepath:
+                error_msg += f"  Missing in filepath_dict: {missing_in_filepath}\n"
+            raise ValueError(error_msg)
+        
+        # Check that each sample has required 'Experiment' field
+        for sample_name, info in sample_information.items():
+            if not isinstance(info, dict):
+                raise TypeError(
+                    f"sample_information['{sample_name}'] must be a dictionary, "
+                    f"got {type(info).__name__}"
+                )
+            
+            if 'Experiment' not in info:
+                raise ValueError(
+                    f"sample_information['{sample_name}'] must contain 'Experiment' key.\n"
+                    f"Expected structure: {{'Experiment': str, 'Sample': str, ...}}\n"
+                    f"Got keys: {list(info.keys())}"
+                )
+        
+        # Check report_type value
+        if report_type not in ['raw', 'excel']:
+            raise ValueError(
+                f"report_type must be 'raw' or 'excel', got '{report_type}'"
+            )
 
     def _create_default_palette(self):
         """Create default color palette if none provided."""
@@ -98,7 +234,7 @@ class GPC_dataset:
         self.data_raw_corrected = self.raw_data_correction(
             self.data_converted, 
             columns_to_correct=['Concentration mg/mL'],
-            correction_plotting_intensity=True
+            correction_plotting_intensity = False
         )
         self.data_MMD_all = self.calculate_MMD_from_raw_data()
         self.data_Mn_Mw = self.calculate_Mn_Mw_raw_data()
@@ -120,10 +256,10 @@ class GPC_dataset:
             intensity = df['Concentration mg/mL']
             logMi = df['LogM']
             Mi = 10 ** logMi  # Convert logM to M
-            Mw = sum(Mi*intensity) / sum(intensity)  # Weight-average molar mass
-            Mn = sum(intensity) / sum(intensity/Mi)  # Number-average molar mass
+            Mw = sum(Mi*intensity) / sum(intensity) if sum(intensity) > 0 else 0  # Weight-average molar mass
+            Mn = sum(intensity) / sum(intensity/Mi) if sum(intensity/Mi) > 0 else 0  # Number-average molar mass
             M_max = 10 ** intensity.idxmax()  # M at maximum intensity
-            PDI = Mw/Mn
+            PDI = Mw/Mn if Mn > 0 else 0
             info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
         self.Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
@@ -147,6 +283,10 @@ class GPC_dataset:
     
         for file, path in filepath_dict.items():
             data_i = pd.read_excel(path, sheet_name='Data', header=0, index_col=0)
+            required_columns = ['Concentration Smoothed ', 'Retention volume processed mL', 'Calib NS Volumes mL', 'Calib LogM Points NS ']
+            missing_columns = [col for col in required_columns if col not in data_i.columns]
+            if missing_columns:
+                raise ValueError(f"Missing columns in {file}: {missing_columns}")
             df_i = data_i[['Concentration Smoothed ', 'Retention volume processed mL', 'Calib NS Volumes mL', 'Calib LogM Points NS ']]
             df_i.columns = ['Concentration mg/mL', 'Elution Volume (mL)', 'Calib NS Volumes mL', 'Calib LogM Points NS ']
             df_i = df_i.copy()
@@ -215,10 +355,10 @@ class GPC_dataset:
         ax.set_xlabel(f'{xlabel}', fontweight='bold')
         ax.axvline(x=26, color='black', linestyle='--')
         ax.axvline(x=31, color='red', linestyle='--')
-        ax.axvline(x=10, color='red', linestyle='--')
+        ax.axvline(x=14, color='red', linestyle='--')
         # ax.set_xlim(1,31)
         ax.set_ylabel(r'$\bf{Intensity}\ \it{(mg/mL)}$')
-        ax.set_title('Raw data')
+        ax.set_title('Raw data, integration range between red and black lines and baseline calculated between the two red lines')
         plt.legend()
 
     def straight_line_2points(self, x_range, df, average = True):
@@ -292,7 +432,6 @@ class GPC_dataset:
 
     def raw_data_correction(self, data_extracted, columns_to_correct = ['MMD', 'Concentration mg/mL'], average_baseline = True, 
                             # threshold_at = 0.003, 
-                            x_range=[14, 26], baseline_window = [10, 31], 
                             replace_by = np.nan, 
                             correction_plotting_MMD = False, correction_plotting_intensity = False):
         """Correct raw data by baseline subtraction and thresholding. The thresholding is done based on the noise level in the baseline region, keeping only the largest non-NaN block after thresholding.
@@ -321,6 +460,8 @@ class GPC_dataset:
         data_corrected = {}
         axbaseline_MMD = None
         axbaseline_intensity = None
+        x_range = self.int_x_range
+        baseline_window = self.baseline_window
         
         if correction_plotting_MMD:
             figbaseline_MMD, axbaseline_MMD = plt.subplots(figsize=(6, 5))
