@@ -731,43 +731,129 @@ class GPC_dataset:
             ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, xlabel = 'Experiment', rotation=75):
+    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, xlabel='Experiment', label=None, rotation=75):
         """
-        Plotting boxplots for Mw and Mn.
+        Plotting boxplots for Mw and Mn when multiple measurements exist per condition.
+        
+        This function groups data by the specified xlabel field and creates boxplots
+        to show the distribution of molecular weights for each group.
+        
         Parameters
         ----------
         data_Mw_Mn_all : DataFrame
             DataFrame containing Mw and Mn data for all samples.
-        xlabel : str
-            Label for the x-axis.
-            can be 'Milling Time (s)' or 'Experiment' or 'Mass of PP (g)' 
+            Should be obtained from calculate_Mn_Mw_raw_data().
+            
+        xlabel : str, optional
+            Field to group by and use as x-axis labels.
+            Can be 'Milling Time (s)', 'Experiment', 'Mass of PP (g)', etc.
+            Default is 'Experiment'.
+            
+        label : str, optional
+            Field to use for color-coding different groups (e.g., 'Beads Type').
+            If None, all boxes use default colors.
+            Default is None.
+            
         rotation : int, optional
-            Rotation angle for x-axis labels. Default is 75.
-        write_title : bool, optional
-            If True, adds a title to the figure, must add a title string as fig_title = --- . Default is False.
-        ylimMw and ylimMn : list, optional
-            Limits for the y-axis of the Mw and Mn plots. Default is None.
-        fig_title : str, optional
-            Title of the figure. Default is None.
-        filepath_figure_saving : str, optional
-            Path where the figure will be saved. Default is None.
-        """
-        data = data_Mw_Mn_all.copy()
-        mw_data = data.groupby(xlabel)['Mw'].apply(list)
-        mn_data = data.groupby(xlabel)['Mn'].apply(list)
-
-        fig, (ax1,ax2) = plt.subplots(1,2,figsize=(10, 5))
+            Rotation angle for x-axis labels in degrees. Default is 75.
+            
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object
+        ax1 : matplotlib.axes.Axes
+            Axes for Mw boxplot
+        ax2 : matplotlib.axes.Axes
+            Axes for Mn boxplot
+            
+        Examples
+        --------
+        >>> # Group by milling time, color by bead type
+        >>> fig, ax1, ax2 = gpc.plotting_Mw_Mn_boxplot(
+        ...     gpc.data_Mn_Mw,
+        ...     xlabel='Milling Time (s)',
+        ...     label='Beads Type'
+        ... )
         
-        ax1.boxplot(mw_data, positions=np.arange(len(mw_data)), widths=0.4, patch_artist=True, boxprops=dict(facecolor="#461ae4", color="#461ae4"), medianprops=dict(color="black"))
-        ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$', color="#461ae4")
+        >>> # Simple boxplot without color coding
+        >>> fig, ax1, ax2 = gpc.plotting_Mw_Mn_boxplot(
+        ...     gpc.data_Mn_Mw,
+        ...     xlabel='Experiment',
+        ...     label=None
+        ... )
+        """
+        # Calculate data with proper grouping
+        data = self.calculate_Mn_Mw_raw_data(xlabel=xlabel)
+        
+        # Group data by xlabel field
+        mw_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
+        mn_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
+        
+        mw_data = mw_grouped['Mw'].apply(list)
+        mn_data = mn_grouped['Mn'].apply(list)
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        
+        # Prepare colors if label is specified
+        if label is not None:
+            # Get unique label values for color mapping
+            label_values = {}
+            for sample_name in data.index:
+                x_val = self.sample_information[sample_name][xlabel]
+                label_val = self.sample_information[sample_name].get(label, 'Unknown')
+                if x_val not in label_values:
+                    label_values[x_val] = label_val
+            
+            # Create color map
+            unique_labels = list(set(label_values.values()))
+            colors = plt.cm.get_cmap('tab10', len(unique_labels))
+            label_colors = {lbl: colors(i) for i, lbl in enumerate(unique_labels)}
+            
+            # Plot with colors
+            for i, (x_val, mw_vals) in enumerate(mw_data.items()):
+                color = label_colors[label_values[x_val]]
+                bp1 = ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
+                                  patch_artist=True,
+                                  boxprops=dict(facecolor=color, color=color, alpha=0.7),
+                                  medianprops=dict(color="black", linewidth=2))
+                
+            for i, (x_val, mn_vals) in enumerate(mn_data.items()):
+                color = label_colors[label_values[x_val]]
+                bp2 = ax2.boxplot([mn_vals], positions=[i], widths=0.4,
+                                  patch_artist=True,
+                                  boxprops=dict(facecolor=color, color=color, alpha=0.7),
+                                  medianprops=dict(color="black", linewidth=2))
+            
+            # Create legend
+            from matplotlib.patches import Patch
+            legend_elements = [Patch(facecolor=label_colors[lbl], label=lbl, alpha=0.7) 
+                             for lbl in unique_labels]
+            ax1.legend(handles=legend_elements, title=label)
+            ax2.legend(handles=legend_elements, title=label)
+            
+        else:
+            # Plot without color coding - use default colors
+            ax1.boxplot(mw_data.values, positions=np.arange(len(mw_data)), 
+                       widths=0.4, patch_artist=True,
+                       boxprops=dict(facecolor="#461ae4", color="#461ae4"),
+                       medianprops=dict(color="black"))
+            
+            ax2.boxplot(mn_data.values, positions=np.arange(len(mn_data)),
+                       widths=0.4, patch_artist=True,
+                       boxprops=dict(facecolor="#e41a1c", color="#e41a1c"),
+                       medianprops=dict(color="black"))
+        
+        # Set labels and ticks
+        ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
+        ax1.set_xlabel(xlabel)
         ax1.set_xticks(np.arange(len(mw_data)))
         ax1.set_xticklabels(mw_data.index, rotation=rotation)
-
-        ax2.boxplot(mn_data, positions=np.arange(len(mw_data)), widths=0.4, patch_artist=True, boxprops=dict(facecolor="#e41a1c", color="#e41a1c"), medianprops=dict(color="black"))
-        ax2.set_ylabel(r'$\bf{Mn}\ \it{(g/mol)}$', color="#e41a1c")
+        
+        ax2.set_ylabel(r'$\bf{Mn}\ \it{(g/mol)}$')
+        ax2.set_xlabel(xlabel)
         ax2.set_xticks(np.arange(len(mn_data)))
         ax2.set_xticklabels(mn_data.index, rotation=rotation)
-        plt.xticks(rotation=rotation)
+        
         plt.tight_layout()
         return fig, ax1, ax2
     """
