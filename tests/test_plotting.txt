@@ -1,0 +1,11 @@
+import pandas as pd
+import numpy as np
+from gpc_module import GPC_dataset
+
+def test_straight_line_2points():
+    df = pd.Series([1, 2, 3, 4], index=[10, 11, 12, 13])
+    dataset = GPC_dataset({}, {})
+    line = dataset.straight_line_2points([10, 13], df)
+    assert isinstance(line, pd.DataFrame)
+    assert np.allclose(line.iloc[0]['y'], 1, atol=0.1) is True
+

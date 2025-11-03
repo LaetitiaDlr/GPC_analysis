@@ -25,7 +25,7 @@ class GPC_dataset:
     """
 
     def __init__(self, filepath_dict, sample_information,
-                palette=None, report_type='raw', mass_PP=None, milling_dict=None):
+                palette=None, report_type='raw'):
         """
         Initialize GPC dataset analysis.
         
@@ -48,11 +48,13 @@ class GPC_dataset:
         milling_dict : dict, optional
             Custom milling times
         """
+        self.filepath_dict = filepath_dict
+        self.sample_information = sample_information
+        self.report_type = report_type
         # Mark-Houwink parameters
         self.PS_alpha, self.PS_K = 0.722, 0.000102
         self.PP_alpha, self.PP_K = 0.725, 0.000190
         self.density_PP = 910  # g/L
-        self.mass_PP = mass_PP
         
         # Calculate conversion factors
         self.H_0 = (math.log10(self.PS_K) - math.log10(self.PP_K))/(self.PP_alpha+1)
@@ -68,8 +70,7 @@ class GPC_dataset:
         
         # Process data based on report type
 
-        self.filepath_dict = filepath_dict
-        self.sample_information = sample_information
+
         if report_type == 'excel':
             self._process_excel_data()
         else:  # raw
@@ -281,7 +282,7 @@ class GPC_dataset:
         valid_blocks = block_ids[mask]
         
         if len(valid_blocks) == 0:
-            return df.iloc[0:0]  # DataFrame vide
+            return df.iloc[0:0]  # DataFrame empty
         
         # Find the largest block
         largest_block_id = valid_blocks.value_counts().idxmax()
