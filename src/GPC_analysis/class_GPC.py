@@ -260,7 +260,7 @@ class GPC_dataset:
             Mi = 10 ** logMi  # Convert logM to M
             Mw = sum(Mi*intensity) / sum(intensity) if sum(intensity) > 0 else 0  # Weight-average molar mass
             Mn = sum(intensity) / sum(intensity/Mi) if sum(intensity/Mi) > 0 else 0  # Number-average molar mass
-            M_max = 10 ** intensity.idxmax()  # M at maximum intensity
+            M_max = intensity.idxmax()  # M at maximum intensity
             PDI = Mw/Mn if Mn > 0 else 0
             info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
@@ -605,7 +605,18 @@ class GPC_dataset:
         # Sauvegarder les Mw, Mn, PDI (un seul fichier)
         if hasattr(self, 'data_Mn_Mw'):
             mw_mn_path = os.path.join(filepath_saving, 'Mw_Mn_Results.csv')
-            self.data_Mn_Mw.to_csv(mw_mn_path)
+            
+            # Si le fichier existe déjà, charger les données existantes
+            if os.path.exists(mw_mn_path):
+                existing_data = pd.read_csv(mw_mn_path, index_col=0)
+                # Combiner avec les nouvelles données (les nouvelles écrasent les anciennes pour les mêmes index)
+                combined_data = pd.concat([existing_data, self.data_Mn_Mw])
+                # Supprimer les duplicats en gardant la dernière occurrence (les nouvelles données)
+                combined_data = combined_data[~combined_data.index.duplicated(keep='last')]
+                combined_data.to_csv(mw_mn_path)
+            else:
+                # Si le fichier n'existe pas, créer un nouveau fichier
+                self.data_Mn_Mw.to_csv(mw_mn_path)
         
         # Sauvegarder les données brutes corrigées (un fichier par échantillon)
         if hasattr(self, 'data_raw_corrected'):
@@ -652,16 +663,24 @@ class GPC_dataset:
         for sample_name, df in data_MMD.items():
             exp_name = self.sample_information[sample_name]['Experiment']
             df_not_log = 10 ** df.index
-            label_name = self.sample_information[sample_name][label1]
+            label_name = str(self.sample_information[sample_name][label1])
             if label2 is not None:
-                label_name += f' — {self.sample_information[sample_name][label2]}'
+                label_name += f' — {str(self.sample_information[sample_name][label2])}'
             if label3 is not None:
-                label_name += f' — {self.sample_information[sample_name][label3]}'
+                label_name += f' — {str(self.sample_information[sample_name][label3])}'
             if label_name not in seen_labels:
                 seen_labels.add(label_name)
-                ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[sample_name])#, marker = 'o', markersize = 1)
+                if type(self.palette) == dict: 
+                    ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[self.sample_information[sample_name]['Experiment']])#, marker = 'o', markersize = 1)
+                elif type(self.palette) == list:
+                    ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[len(seen_labels)-1])#, marker = 'o', markersize = 1)
             else:
-                ax.plot(df_not_log, df['MMD'], color = self.palette[sample_name])
+                # Cas répétition du label: si palette est une liste on reprend l'indice déjà utilisé
+                if type(self.palette) == dict:
+                    ax.plot(df_not_log, df['MMD'], color = self.palette[self.sample_information[sample_name]['Experiment']])
+                elif type(self.palette) == list:
+                    # len(seen_labels)-1 correspond à l'indice attribué lors de la première apparition
+                    ax.plot(df_not_log, df['MMD'], color = self.palette[len(seen_labels)-1])
         ax.set_xscale(scale)
 
         if scale == 'linear':
@@ -693,20 +712,27 @@ class GPC_dataset:
             # get x-value from sample_information (e.g. Milling Time (s) or Experiment)
             x_val = self.sample_information[exp_name][xlabel]
             x_vals.append(x_val)
+            
+            # Déterminer la couleur depuis la palette
+            if type(self.palette) == dict:
+                color = self.palette[self.sample_information[exp_name]['Experiment']]
+            elif type(self.palette) == list:
+                color = self.palette[i % len(self.palette)]
+            else:
+                color = None  # Couleur par défaut matplotlib
 
             # build legend string: "Experiment — <label>"
-            
             if label != None:
                 exp_str = str(self.sample_information[exp_name].get('Experiment', exp_name))
                 label_val = str(self.sample_information[exp_name].get(label, ''))
                 legend_str = f"{exp_str} — {label_val}"
 
             # plot points; give each point its legend entry
-                ax1.scatter(x_vals[i], mw_data[exp_name], label=legend_str, s=50, alpha=0.8)
-                ax2.scatter(x_vals[i], mn_data[exp_name], label=legend_str, s=50, alpha=0.8)
+                ax1.scatter(x_vals[i], mw_data[exp_name], label=legend_str, color=color, s=50, alpha=0.8)
+                ax2.scatter(x_vals[i], mn_data[exp_name], label=legend_str, color=color, s=50, alpha=0.8)
             else:
-                ax1.scatter(x_vals[i], mw_data[exp_name], s=50, alpha=0.8)
-                ax2.scatter(x_vals[i], mn_data[exp_name], s=50, alpha=0.8)
+                ax1.scatter(x_vals[i], mw_data[exp_name], color=color, s=50, alpha=0.8)
+                ax2.scatter(x_vals[i], mn_data[exp_name], color=color, s=50, alpha=0.8)
             i += 1
 
         ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
@@ -738,7 +764,7 @@ class GPC_dataset:
             ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, xlabel='Experiment', label=None, rotation=75):
+    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, unit='g/mol', xlabel='Experiment', label=None, rotation=75):
         """
         Plotting boxplots for Mw and Mn when multiple measurements exist per condition.
         
@@ -801,62 +827,83 @@ class GPC_dataset:
         
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
         
-        # Prepare colors if label is specified
+        # Utiliser la palette pour attribuer une couleur à chaque boxplot
+        # On récupère les samples correspondant à chaque groupe pour trouver la couleur
+        sample_groups = {}  # Pour mapper x_val -> premier sample_name rencontré
+        for sample_name in data.index:
+            x_val = self.sample_information[sample_name][xlabel]
+            if x_val not in sample_groups:
+                sample_groups[x_val] = sample_name
+        
+        # Plot avec les couleurs de la palette
+        for i, (x_val, mw_vals) in enumerate(mw_data.items()):
+            sample_name = sample_groups[x_val]
+            if unit == 'kg/mol':
+                mw_vals = [val / 1000 for val in mw_vals]
+            
+            # Déterminer la couleur depuis la palette
+            if type(self.palette) == dict:
+                color = self.palette[self.sample_information[sample_name]['Experiment']]
+            elif type(self.palette) == list:
+                color = self.palette[i % len(self.palette)]
+            else:
+                color = "#461ae4"  # Couleur par défaut
+            
+            bp1 = ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
+                              patch_artist=True,
+                              boxprops=dict(facecolor=color, color=color, alpha=0.7),
+                              medianprops=dict(color="black", linewidth=2))
+            
+        for i, (x_val, mn_vals) in enumerate(mn_data.items()):
+            sample_name = sample_groups[x_val]
+            if unit == 'kg/mol':
+                mn_vals = [val / 1000 for val in mn_vals]
+            
+            # Déterminer la couleur depuis la palette
+            if type(self.palette) == dict:
+                color = self.palette[self.sample_information[sample_name]['Experiment']]
+            elif type(self.palette) == list:
+                color = self.palette[i % len(self.palette)]
+            else:
+                color = "#e41a1c"  # Couleur par défaut
+
+            bp2 = ax2.boxplot([mn_vals], positions=[i], widths=0.4,
+                              patch_artist=True,
+                              boxprops=dict(facecolor=color, color=color, alpha=0.7),
+                              medianprops=dict(color="black", linewidth=2))
+        
+        # Créer une légende si label est spécifié
         if label is not None:
-            # Get unique label values for color mapping
-            label_values = {}
-            for sample_name in data.index:
-                x_val = self.sample_information[sample_name][xlabel]
-                label_val = self.sample_information[sample_name].get(label, 'Unknown')
-                if x_val not in label_values:
-                    label_values[x_val] = label_val
-            
-            # Create color map
-            unique_labels = list(set(label_values.values()))
-            colors = plt.cm.get_cmap('tab10', len(unique_labels))
-            label_colors = {lbl: colors(i) for i, lbl in enumerate(unique_labels)}
-            
-            # Plot with colors
-            for i, (x_val, mw_vals) in enumerate(mw_data.items()):
-                color = label_colors[label_values[x_val]]
-                bp1 = ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
-                                  patch_artist=True,
-                                  boxprops=dict(facecolor=color, color=color, alpha=0.7),
-                                  medianprops=dict(color="black", linewidth=2))
-                
-            for i, (x_val, mn_vals) in enumerate(mn_data.items()):
-                color = label_colors[label_values[x_val]]
-                bp2 = ax2.boxplot([mn_vals], positions=[i], widths=0.4,
-                                  patch_artist=True,
-                                  boxprops=dict(facecolor=color, color=color, alpha=0.7),
-                                  medianprops=dict(color="black", linewidth=2))
-            
-            # Create legend
             from matplotlib.patches import Patch
-            legend_elements = [Patch(facecolor=label_colors[lbl], label=lbl, alpha=0.7) 
-                             for lbl in unique_labels]
+            # Collecter les combinaisons uniques de couleur et label
+            unique_combos = {}
+            for x_val in mw_data.index:
+                sample_name = sample_groups[x_val]
+                label_val = str(self.sample_information[sample_name].get(label, 'Unknown'))
+                
+                if type(self.palette) == dict:
+                    color = self.palette[self.sample_information[sample_name]['Experiment']]
+                elif type(self.palette) == list:
+                    idx = list(mw_data.index).index(x_val)
+                    color = self.palette[idx % len(self.palette)]
+                else:
+                    color = "#461ae4"
+                
+                if label_val not in unique_combos:
+                    unique_combos[label_val] = color
+            
+            legend_elements = [Patch(facecolor=color, label=lbl, alpha=0.7) 
+                             for lbl, color in unique_combos.items()]
             ax1.legend(handles=legend_elements, title=label)
             ax2.legend(handles=legend_elements, title=label)
-            
-        else:
-            # Plot without color coding - use default colors
-            ax1.boxplot(mw_data.values, positions=np.arange(len(mw_data)), 
-                       widths=0.4, patch_artist=True,
-                       boxprops=dict(facecolor="#461ae4", color="#461ae4"),
-                       medianprops=dict(color="black"))
-            
-            ax2.boxplot(mn_data.values, positions=np.arange(len(mn_data)),
-                       widths=0.4, patch_artist=True,
-                       boxprops=dict(facecolor="#e41a1c", color="#e41a1c"),
-                       medianprops=dict(color="black"))
         
         # Set labels and ticks
-        ax1.set_ylabel(r'$\bf{Mw}\ \it{(g/mol)}$')
+        ax1.set_ylabel(rf'$\bf{{Mw}}\ \it{{({unit})}}$')
         ax1.set_xlabel(xlabel)
         ax1.set_xticks(np.arange(len(mw_data)))
         ax1.set_xticklabels(mw_data.index, rotation=rotation)
-        
-        ax2.set_ylabel(r'$\bf{Mn}\ \it{(g/mol)}$')
+
+        ax2.set_ylabel(rf'$\bf{{Mn}}\ \it{{({unit})}}$')
         ax2.set_xlabel(xlabel)
         ax2.set_xticks(np.arange(len(mn_data)))
         ax2.set_xticklabels(mn_data.index, rotation=rotation)
