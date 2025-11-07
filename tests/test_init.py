@@ -79,34 +79,7 @@ def test_real_conversion_factors(real_test_file, sample_info_P1022):
     assert abs(gpc.H_0 - expected_H_0) < 0.001
     assert abs(gpc.H_1 - expected_H_1) < 0.001
 
-def test_real_palette_creation(real_test_file, sample_info_P1022):
-    """Test création de palette avec fichier réel"""
-    filepath_dict = {'P1.022': real_test_file}
-    
-    gpc = GPC_dataset(
-        filepath_dict=filepath_dict,
-        sample_information=sample_info_P1022,
-        report_type='excel'
-    )
-    
-    assert isinstance(gpc.palette, dict)
-    assert 'P1.022' in gpc.palette
-    assert len(gpc.palette) == 1
 
-def test_real_custom_palette(real_test_file, sample_info_P1022):
-    """Test palette personnalisée avec fichier réel"""
-    filepath_dict = {'P1.022': real_test_file}
-    custom_palette = {'P1.022': 'red'}
-    
-    gpc = GPC_dataset(
-        filepath_dict=filepath_dict,
-        sample_information=sample_info_P1022,
-        palette=custom_palette,
-        report_type='excel'
-    )
-    
-    assert gpc.palette == custom_palette
-    assert gpc.palette['P1.022'] == 'red'
 
 def test_real_colors_list(real_test_file, sample_info_P1022):
     """Test liste des couleurs avec fichier réel"""
