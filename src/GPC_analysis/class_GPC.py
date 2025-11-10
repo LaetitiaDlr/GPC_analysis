@@ -284,7 +284,32 @@ class GPC_dataset:
         data_raw_all = {}
     
         for file, path in filepath_dict.items():
-            data_i = pd.read_excel(path, sheet_name='Data', header=0, index_col=0)
+            # Check if 'Data' sheet exists
+            try:
+                excel_file = pd.ExcelFile(path)
+                available_sheets = excel_file.sheet_names
+                
+                if 'Data' not in available_sheets:
+                    raise ValueError(
+                        f"❌ Sheet 'Data' not found in file: {file}\n"
+                        f"   File path: {path}\n"
+                        f"   Available sheets: {available_sheets}"
+                    )
+                
+                data_i = pd.read_excel(path, sheet_name='Data', header=0, index_col=0)
+                
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"❌ File not found: {file}\n"
+                    f"   Path: {path}"
+                )
+            except Exception as e:
+                raise Exception(
+                    f"❌ Error reading file: {file}\n"
+                    f"   Path: {path}\n"
+                    f"   Error: {str(e)}"
+                )
+            
             required_columns = ['Concentration Smoothed ', 'Retention volume processed mL', 'Calib NS Volumes mL', 'Calib LogM Points NS ']
             missing_columns = [col for col in required_columns if col not in data_i.columns]
             if missing_columns:

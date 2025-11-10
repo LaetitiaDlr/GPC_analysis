@@ -6,3 +6,8 @@ from importlib.metadata import version
 
 # Load the version
 __version__ = version("GPC_analysis")
+
+# Export main class
+from GPC_analysis.class_GPC import GPC_dataset
+
+__all__ = ["GPC_dataset", "__version__"]

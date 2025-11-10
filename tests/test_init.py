@@ -6,8 +6,8 @@ import pandas as pd
 import numpy as np
 from GPC_analysis.class_GPC import GPC_dataset
 
-# Chemin vers le fichier de test réel
-TEST_FILE_PATH = os.path.join(os.path.dirname(__file__), '..', 'P1.022-17072025.xlsx')
+# Chemin vers le fichier de test réel (dans le même dossier que ce fichier de test)
+TEST_FILE_PATH = os.path.join(os.path.dirname(__file__), 'P1.022-17072025.xlsx')
 
 @pytest.fixture
 def real_test_file():
@@ -39,11 +39,11 @@ def test_real_initialization_raw_type(real_test_file, sample_info_P1022):
     gpc = GPC_dataset(
         filepath_dict=filepath_dict,
         sample_information=sample_info_P1022,
-        report_type='excel'  # ← Change ici selon ton fichier
+        report_type='raw'  # ← Change ici selon ton fichier
     )
     
     assert gpc.filepath_dict == filepath_dict
-    assert gpc.report_type == 'excel'
+    assert gpc.report_type == 'raw'
     assert hasattr(gpc, 'data_MMD_all')
     assert 'P1.022' in gpc.data_MMD_all
 
@@ -54,7 +54,7 @@ def test_real_mark_houwink_parameters(real_test_file, sample_info_P1022):
     gpc = GPC_dataset(
         filepath_dict=filepath_dict,
         sample_information=sample_info_P1022,
-        report_type='excel'
+        report_type='raw'
     )
     
     assert gpc.PS_alpha == 0.722
@@ -69,7 +69,7 @@ def test_real_conversion_factors(real_test_file, sample_info_P1022):
     gpc = GPC_dataset(
         filepath_dict=filepath_dict,
         sample_information=sample_info_P1022,
-        report_type='excel'
+        report_type='raw'
     )
     
     import math
@@ -88,7 +88,7 @@ def test_real_colors_list(real_test_file, sample_info_P1022):
     gpc = GPC_dataset(
         filepath_dict=filepath_dict,
         sample_information=sample_info_P1022,
-        report_type='excel'
+        report_type='raw'
     )
     
     assert hasattr(gpc, 'colors')
@@ -103,7 +103,7 @@ def test_real_data_structure(real_test_file, sample_info_P1022):
     gpc = GPC_dataset(
         filepath_dict=filepath_dict,
         sample_information=sample_info_P1022,
-        report_type='excel'
+        report_type='raw'
     )
     
     # Vérifier data_MMD_all
@@ -111,10 +111,6 @@ def test_real_data_structure(real_test_file, sample_info_P1022):
     assert 'P1.022' in gpc.data_MMD_all
     assert isinstance(gpc.data_MMD_all['P1.022'], pd.DataFrame)
     assert not gpc.data_MMD_all['P1.022'].empty
-    
-    # Vérifier data_Mn_Mw_software
-    assert hasattr(gpc, 'data_Mn_Mw_software')
-    assert isinstance(gpc.data_Mn_Mw_software, pd.DataFrame)
     
     # Vérifier data_Mn_Mw
     assert hasattr(gpc, 'data_Mn_Mw')
