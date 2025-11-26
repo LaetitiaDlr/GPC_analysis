@@ -91,16 +91,16 @@ def test_calculate_Mn_Mw_raw_data(gpc_dataset):
         # Verifications
         assert isinstance(result, pd.DataFrame), "Result should be a DataFrame"
         
-        expected_cols = ['Mw', 'Mn', 'PDI', 'M_max']
+        expected_cols = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
         for col in expected_cols:
             assert col in result.columns, f"Column '{col}' missing"
         
         # Check values
         sample_name = result.index[0]
-        Mw = result.loc[sample_name, 'Mw']
-        Mn = result.loc[sample_name, 'Mn']
+        Mw = result.loc[sample_name, 'Mw[g/mol]']
+        Mn = result.loc[sample_name, 'Mn[g/mol]']
         PDI = result.loc[sample_name, 'PDI']
-        M_max = result.loc[sample_name, 'M_max']
+        M_max = result.loc[sample_name, 'M_max[g/mol]']
         
         assert Mw > 0, f"Mw should be > 0, got {Mw}"  # type: ignore
         assert Mn > 0, f"Mn should be > 0, got {Mn}"  # type: ignore
