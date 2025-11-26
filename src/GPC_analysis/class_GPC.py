@@ -265,7 +265,7 @@ class GPC_dataset:
             info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
         self.Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
-        self.Mn_Mw_from_raw.columns = ['Mw', 'Mn', 'PDI', 'M_max']
+        self.Mn_Mw_from_raw.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
         return self.Mn_Mw_from_raw
 
     def extract_raw_data(self, filepath_dict):
