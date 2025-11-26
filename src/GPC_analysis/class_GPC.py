@@ -993,6 +993,6 @@ class GPC_dataset:
                 PDI = Mw/Mn
             Mn_Mw_from_MMD[sample_name] = [Mw, Mn, PDI, M_max]
         Mn_Mw_from_MMD = pd.DataFrame(Mn_Mw_from_MMD).T
-        Mn_Mw_from_MMD.columns = ['Mw', 'Mn', 'PDI', 'M_max']
+        Mn_Mw_from_MMD.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
 
         return Mn_Mw_from_MMD
