@@ -183,7 +183,9 @@ def test_calculate_Mn_Mw_from_MMD(gpc_dataset):
         sample_name = result.index[0]
         Mw = result.loc[sample_name, 'Mw[g/mol]']
         Mn = result.loc[sample_name, 'Mn[g/mol]']
-        PDI = result.loc[sample_name, 'PDI']        assert Mw > 0 # type: ignore
+        PDI = result.loc[sample_name, 'PDI']
+        
+        assert Mw > 0 # type: ignore
         assert Mn > 0 # type: ignore
         assert Mw >= Mn # type: ignore
         assert PDI >= 1.0 # type: ignore
