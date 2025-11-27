@@ -175,17 +175,15 @@ def test_calculate_Mn_Mw_from_MMD(gpc_dataset):
         
         # Verifications
         assert isinstance(result, pd.DataFrame)
-        
-        expected_cols = ['Mw', 'Mn', 'PDI']
+
+        expected_cols = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI']
         for col in expected_cols:
             assert col in result.columns, f"Column '{col}' missing"
-        
+
         sample_name = result.index[0]
-        Mw = result.loc[sample_name, 'Mw']
-        Mn = result.loc[sample_name, 'Mn']
-        PDI = result.loc[sample_name, 'PDI']
-        
-        assert Mw > 0 # type: ignore
+        Mw = result.loc[sample_name, 'Mw[g/mol]']
+        Mn = result.loc[sample_name, 'Mn[g/mol]']
+        PDI = result.loc[sample_name, 'PDI']        assert Mw > 0 # type: ignore
         assert Mn > 0 # type: ignore
         assert Mw >= Mn # type: ignore
         assert PDI >= 1.0 # type: ignore

@@ -727,8 +727,8 @@ class GPC_dataset:
         """
         data_Mw_Mn_all = self.calculate_Mn_Mw_raw_data(xlabel=xlabel)
 
-        mw_data = data_Mw_Mn_all['Mw']
-        mn_data = data_Mw_Mn_all['Mn']
+        mw_data = data_Mw_Mn_all['Mw[g/mol]']
+        mn_data = data_Mw_Mn_all['Mn[g/mol]']
         fig, (ax1,ax2) = plt.subplots(1,2,figsize=(8, 5))
         x_vals = []
         i=0
