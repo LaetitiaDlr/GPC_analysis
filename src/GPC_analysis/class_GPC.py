@@ -260,7 +260,10 @@ class GPC_dataset:
             Mi = 10 ** logMi  # Convert logM to M
             Mw = sum(Mi*intensity) / sum(intensity) if sum(intensity) > 0 else 0  # Weight-average molar mass
             Mn = sum(intensity) / sum(intensity/Mi) if sum(intensity/Mi) > 0 else 0  # Number-average molar mass
-            M_max = intensity.idxmax()  # M at maximum intensity
+            intensity_max = max(intensity)
+            M_max = 10 ** df.loc[df['Concentration mg/mL'] == intensity_max, 'LogM'].values[0]
+            
+            
             PDI = Mw/Mn if Mn > 0 else 0
             info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
@@ -379,13 +382,16 @@ class GPC_dataset:
             if xlabel == 'LogM':
                 ax.set_xscale('log')
             ax.plot(df.index, df[ylabel], label = sample_name)#, color = self.palette[self.label[sample_name]])
+        int_range = self.int_x_range
+        baseline_range = self.baseline_window
         ax.set_xlabel(f'{xlabel}', fontweight='bold')
-        ax.axvline(x=26, color='black', linestyle='--')
-        ax.axvline(x=31, color='red', linestyle='--')
-        ax.axvline(x=14, color='red', linestyle='--')
+        ax.axvline(x=max(int_range), color='black', linestyle='--')
+        ax.axvline(x=max(baseline_range), color='red', linestyle='--')
+        ax.axvline(x=min(baseline_range), color='red',linestyle='--')
+        ax.axvline(x=min(int_range), color='black', linestyle='--')
         # ax.set_xlim(1,31)
         ax.set_ylabel(r'$\bf{Intensity}\ \it{(mg/mL)}$')
-        ax.set_title('Raw data, integration range between red and black lines and baseline calculated between the two red lines')
+        ax.set_title('Raw data, integration range between black lines and baseline calculated between the two red lines')
         plt.legend()
 
     def straight_line_2points(self, x_range, df, average = True):
@@ -656,7 +662,7 @@ class GPC_dataset:
 
         print(f"Results saved in {filepath_saving}")
 
-    def plotting_MMD_Mw(self, data_MMD, scale, label1 = 'Experiment', label2 = None, label3 = None,):
+    def plotting_MMD_Mw(self, scale, data_MMD=None, label1 = 'Experiment', label2 = None, label3 = None,):
 
         """
         Plotting Molar Mass Distribution (MMD) against Molar Mass (Mw).
@@ -684,6 +690,9 @@ class GPC_dataset:
         fig,ax = plt.subplots(figsize=(6, 5))#, dpi=300)
         #data_MMD_all = {}
         seen_labels = set()
+
+        if data_MMD == None:
+            data_MMD = self.calculate_MMD_from_raw_data()
 
         for sample_name, df in data_MMD.items():
             exp_name = self.sample_information[sample_name]['Experiment']
@@ -789,7 +798,7 @@ class GPC_dataset:
             ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, unit='g/mol', xlabel='Experiment', label=None, rotation=75):
+    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, noxlabel = True, unit='g/mol', xlabel='Experiment', label=None, rotation=75, figsize_boxplot=(10, 5)):
         """
         Plotting boxplots for Mw and Mn when multiple measurements exist per condition.
         
@@ -847,10 +856,10 @@ class GPC_dataset:
         mw_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
         mn_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
         
-        mw_data = mw_grouped['Mw'].apply(list)
-        mn_data = mn_grouped['Mn'].apply(list)
+        mw_data = mw_grouped['Mw[g/mol]'].apply(list)
+        mn_data = mn_grouped['Mn[g/mol]'].apply(list)
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize_boxplot)
         
         # Utiliser la palette pour attribuer une couleur à chaque boxplot
         # On récupère les samples correspondant à chaque groupe pour trouver la couleur
@@ -924,12 +933,18 @@ class GPC_dataset:
         
         # Set labels and ticks
         ax1.set_ylabel(rf'$\bf{{Mw}}\ \it{{({unit})}}$')
-        ax1.set_xlabel(xlabel)
+        if noxlabel:
+            ax1.set_xlabel('')
+        else:
+            ax1.set_xlabel(xlabel)
         ax1.set_xticks(np.arange(len(mw_data)))
         ax1.set_xticklabels(mw_data.index, rotation=rotation)
 
         ax2.set_ylabel(rf'$\bf{{Mn}}\ \it{{({unit})}}$')
-        ax2.set_xlabel(xlabel)
+        if noxlabel:
+            ax2.set_xlabel('')
+        else:
+            ax2.set_xlabel(xlabel)
         ax2.set_xticks(np.arange(len(mn_data)))
         ax2.set_xticklabels(mn_data.index, rotation=rotation)
         
@@ -989,7 +1004,7 @@ class GPC_dataset:
             else:
                 Mw = sum(Mi*intensity) / sum(intensity)  # Weight-average molar mass
                 Mn = sum(intensity) / sum(intensity/Mi)  # Number-average molar mass
-                M_max = 10 ** intensity.idxmax() 
+                M_max = 10 ** df.loc[intensity.idxmax(), 'LogM']
                 PDI = Mw/Mn
             Mn_Mw_from_MMD[sample_name] = [Mw, Mn, PDI, M_max]
         Mn_Mw_from_MMD = pd.DataFrame(Mn_Mw_from_MMD).T
