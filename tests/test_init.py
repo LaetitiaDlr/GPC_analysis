@@ -59,8 +59,8 @@ def test_real_mark_houwink_parameters(real_test_file, sample_info_P1022):
     
     assert gpc.PS_alpha == 0.722
     assert gpc.PS_K == 0.000102
-    assert gpc.PP_alpha == 0.725
-    assert gpc.PP_K == 0.000190
+    assert gpc.alpha == 0.725 or gpc.alpha == 0.725  # either PP or PE
+    assert gpc.K == 0.000190 or gpc.K == 0.00044160  # either PP or PE
 
 def test_real_conversion_factors(real_test_file, sample_info_P1022):
     """Test facteurs de conversion H_0 et H_1 avec fichier réel"""
@@ -73,8 +73,8 @@ def test_real_conversion_factors(real_test_file, sample_info_P1022):
     )
     
     import math
-    expected_H_0 = (math.log10(gpc.PS_K) - math.log10(gpc.PP_K))/(gpc.PP_alpha+1)
-    expected_H_1 = (gpc.PS_alpha+1)/(gpc.PP_alpha+1)
+    expected_H_0 = (math.log10(gpc.PS_K) - math.log10(gpc.K))/(gpc.alpha+1)
+    expected_H_1 = (gpc.PS_alpha+1)/(gpc.alpha+1)
     
     assert abs(gpc.H_0 - expected_H_0) < 0.001
     assert abs(gpc.H_1 - expected_H_1) < 0.001

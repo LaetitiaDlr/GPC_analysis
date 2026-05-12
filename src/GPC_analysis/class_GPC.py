@@ -1019,7 +1019,7 @@ class GPC_dataset:
             else:
                 Mw = sum(Mi*intensity) / sum(intensity)  # Weight-average molar mass
                 Mn = sum(intensity) / sum(intensity/Mi)  # Number-average molar mass
-                M_max = 10 ** df.loc[intensity.idxmax(), 'LogM']
+                M_max = 10 ** intensity.idxmax()
                 PDI = Mw/Mn
             Mn_Mw_from_MMD[sample_name] = [Mw, Mn, PDI, M_max]
         Mn_Mw_from_MMD = pd.DataFrame(Mn_Mw_from_MMD).T
