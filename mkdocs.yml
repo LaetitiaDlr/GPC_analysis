@@ -99,22 +99,22 @@ plugins:
   - social
   - offline
   - mkdocstrings:
-      default_handler: python
-      handlers:
-        python:
-          import:
+    default_handler: python
+    handlers:
+      python:
+        options:
+          inventories:
             - https://docs.python.org/3/objects.inv
             - https://numpy.org/doc/stable/objects.inv
-          options:
-            docstring_style: numpy
-            docstring_section_style: list
-            separate_signature: true
-            merge_init_into_class: true
-            docstring_options:
-              ignore_init_summary: true
-            show_signature_annotations: true
-            signature_crossrefs: true
-            show_if_no_docstring: true
+          docstring_style: numpy
+          docstring_section_style: list
+          separate_signature: true
+          merge_init_into_class: true
+          docstring_options:
+            ignore_init_summary: true
+          show_signature_annotations: true
+          signature_crossrefs: true
+          show_if_no_docstring: true
   - gen-files:
       scripts:
         - docs/gen_ref_pages.py
