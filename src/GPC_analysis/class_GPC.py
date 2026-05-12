@@ -81,7 +81,8 @@ class GPC_dataset:
     def __init__(self, filepath_dict, sample_information,
                 palette=None, report_type='raw',
                 int_x_range=[14, 26], baseline_window = [10, 31], 
-                polymer = 'PP'):
+                polymer = 'PP',
+                density_polymer = 910):
         """
         Initialize GPC dataset analysis.
         
@@ -119,21 +120,25 @@ class GPC_dataset:
         # Mark-Houwink parameters
         self.PS_alpha, self.PS_K = 0.722, 0.000102
         if polymer == 'PP':
-            self.PP_alpha, self.PP_K = 0.725, 0.000190
-            self.density_PP = 910  # g/L
+            self.alpha, self.K = 0.725, 0.000190
+            self.density_polymer = density_polymer  # g/L
+        elif polymer == 'PE':
+            self.alpha, self.K = 0.725, 0.00044160
+            self.density_polymer = density_polymer
+        else:
+            raise ValueError(f"Unsupported polymer type: {polymer}. Supported types are 'PP' and 'PE'.")
         
         # Calculate conversion factors
-        self.H_0 = (math.log10(self.PS_K) - math.log10(self.PP_K))/(self.PP_alpha+1)
-        self.H_1 = (self.PS_alpha+1)/(self.PP_alpha+1)
+        self.H_0 = (math.log10(self.PS_K) - math.log10(self.K))/(self.alpha+1)
+        self.H_1 = (self.PS_alpha+1)/(self.alpha+1)
 
         # Setup color palette
-        self.colors = ['red', 'blue', 'green', 'orange', 'purple', 
-                    'brown', 'pink', 'gray', 'olive', 'cyan']
+        self.colors = ['red', 'blue', 'green', 'orange', 'purple',
+               'brown', 'pink', 'gray', 'olive', 'cyan']
         if palette is None:
             self.palette = self._create_default_palette()
         else:
             self.palette = palette
-        
         # Process data based on report type
 
 
@@ -265,7 +270,7 @@ class GPC_dataset:
             
             
             PDI = Mw/Mn if Mn > 0 else 0
-            info = self.sample_information[sample_name][xlabel]
+            # info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
         self.Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
         self.Mn_Mw_from_raw.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
@@ -662,7 +667,7 @@ class GPC_dataset:
 
         print(f"Results saved in {filepath_saving}")
 
-    def plotting_MMD_Mw(self, scale, data_MMD=None, label1 = 'Experiment', label2 = None, label3 = None,):
+    def plotting_MMD_Mw(self, scale, data_MMD=None, label1 = 'Experiment', label2 = None, label3 = None, figure_size=(6,5), write_title=False, fig_title=None, Mn_plotting=False, zoom_windows_x=None, zoom_windows_y=None, filepath_figure_saving=None, fig_name_saving=None):
 
         """
         Plotting Molar Mass Distribution (MMD) against Molar Mass (Mw).
@@ -687,11 +692,12 @@ class GPC_dataset:
             Name of the figure file (without extension). Default is None.
         """
 
-        fig,ax = plt.subplots(figsize=(6, 5))#, dpi=300)
+        fig,ax = plt.subplots(figsize=figure_size)#, dpi=300)
         #data_MMD_all = {}
         seen_labels = set()
+        label_to_index = {}
 
-        if data_MMD == None:
+        if data_MMD is None:
             data_MMD = self.calculate_MMD_from_raw_data()
 
         for sample_name, df in data_MMD.items():
@@ -704,17 +710,26 @@ class GPC_dataset:
                 label_name += f' — {str(self.sample_information[sample_name][label3])}'
             if label_name not in seen_labels:
                 seen_labels.add(label_name)
-                if type(self.palette) == dict: 
-                    ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[self.sample_information[sample_name]['Experiment']])#, marker = 'o', markersize = 1)
-                elif type(self.palette) == list:
-                    ax.plot(df_not_log, df['MMD'], label = label_name, color = self.palette[len(seen_labels)-1])#, marker = 'o', markersize = 1)
+                label_to_index[label_name] = len(label_to_index)
+
+            color = None
+            color_idx = label_to_index[label_name]
+            if isinstance(self.palette, dict):
+                color = self.palette.get(self.sample_information[sample_name]['Experiment'])
+            elif isinstance(self.palette, list):
+                if len(self.palette) > 0:
+                    color = self.palette[color_idx % len(self.palette)]
+            elif hasattr(self.palette, '__call__'):
+                # Support matplotlib colormaps (e.g. ListedColormap)
+                if len(data_MMD) > 1:
+                    color = self.palette(color_idx / (len(data_MMD) - 1))
+                else:
+                    color = self.palette(0.0)
+
+            if label_name in seen_labels and label_to_index[label_name] == color_idx and label_name not in [line.get_label() for line in ax.get_lines()]:
+                ax.plot(df_not_log, df['MMD'], label=label_name, color=color)
             else:
-                # Cas répétition du label: si palette est une liste on reprend l'indice déjà utilisé
-                if type(self.palette) == dict:
-                    ax.plot(df_not_log, df['MMD'], color = self.palette[self.sample_information[sample_name]['Experiment']])
-                elif type(self.palette) == list:
-                    # len(seen_labels)-1 correspond à l'indice attribué lors de la première apparition
-                    ax.plot(df_not_log, df['MMD'], color = self.palette[len(seen_labels)-1])
+                ax.plot(df_not_log, df['MMD'], color=color)
         ax.set_xscale(scale)
 
         if scale == 'linear':
@@ -730,7 +745,7 @@ class GPC_dataset:
         
         return fig, ax
 
-    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label=None, rotation=75):
+    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label=None, rotation=75, figure_size=(8,5)):
         """
         Plotting scatter plots for Mw and Mn.
         """
@@ -738,7 +753,7 @@ class GPC_dataset:
 
         mw_data = data_Mw_Mn_all['Mw[g/mol]']
         mn_data = data_Mw_Mn_all['Mn[g/mol]']
-        fig, (ax1,ax2) = plt.subplots(1,2,figsize=(8, 5))
+        fig, (ax1,ax2) = plt.subplots(1,2,figsize=figure_size)
         x_vals = []
         i=0
 

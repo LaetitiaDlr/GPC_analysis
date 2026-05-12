@@ -9,3 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - The initial release!
+
+## [0.1.1]
+
+### Added 
+
+- addition of PE mark houwing parameter for the conversion of molar mass
