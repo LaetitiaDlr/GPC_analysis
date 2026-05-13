@@ -624,11 +624,11 @@ class GPC_dataset:
         filepath_saving : str
             Directory path where to save the CSV files
         """
-        # Créer le dossier s'il n'existe pas
+        # Create the directory if it does not exist
         if not os.path.exists(filepath_saving):
             os.makedirs(filepath_saving)
         
-        # Sauvegarder les MMD (un fichier par échantillon)
+        # Save MMD data (one file per sample)
         mmd_folder = os.path.join(filepath_saving, 'MMD')
         if not os.path.exists(mmd_folder):
             os.makedirs(mmd_folder)
@@ -638,23 +638,23 @@ class GPC_dataset:
             file_path = os.path.join(mmd_folder, f"MMD_{safe_name}.csv")
             df.to_csv(file_path)
         
-        # Sauvegarder les Mw, Mn, PDI (un seul fichier)
+        # Save Mw, Mn, PDI (single file)
         if hasattr(self, 'data_Mn_Mw'):
             mw_mn_path = os.path.join(filepath_saving, 'Mw_Mn_Results.csv')
             
-            # Si le fichier existe déjà, charger les données existantes
+            # If the file already exists, load existing data
             if os.path.exists(mw_mn_path):
                 existing_data = pd.read_csv(mw_mn_path, index_col=0)
-                # Combiner avec les nouvelles données (les nouvelles écrasent les anciennes pour les mêmes index)
+                # Combine with new data (new entries overwrite old ones for matching indices)
                 combined_data = pd.concat([existing_data, self.data_Mn_Mw])
-                # Supprimer les duplicats en gardant la dernière occurrence (les nouvelles données)
+                # Remove duplicates while keeping the last occurrence (new data)
                 combined_data = combined_data[~combined_data.index.duplicated(keep='last')]
                 combined_data.to_csv(mw_mn_path)
             else:
-                # Si le fichier n'existe pas, créer un nouveau fichier
+                # If the file does not exist, create a new one
                 self.data_Mn_Mw.to_csv(mw_mn_path)
         
-        # Sauvegarder les données brutes corrigées (un fichier par échantillon)
+        # Save corrected raw data (one file per sample)
         if hasattr(self, 'data_raw_corrected'):
             raw_folder = os.path.join(filepath_saving, 'Raw_Corrected')
             if not os.path.exists(raw_folder):
@@ -745,7 +745,7 @@ class GPC_dataset:
         
         return fig, ax
 
-    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label=None, rotation=75, figure_size=(8,5)):
+    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label1=None, label2=None, label3=None, rotation=75, figure_size=(8,5)):
         """
         Plotting scatter plots for Mw and Mn.
         """
@@ -762,19 +762,24 @@ class GPC_dataset:
             x_val = self.sample_information[exp_name][xlabel]
             x_vals.append(x_val)
             
-            # Déterminer la couleur depuis la palette
+            # Determine color based on palette and sample information
             if type(self.palette) == dict:
                 color = self.palette[self.sample_information[exp_name]['Experiment']]
             elif type(self.palette) == list:
                 color = self.palette[i % len(self.palette)]
             else:
-                color = None  # Couleur par défaut matplotlib
+                color = None  # Will use default color cycle if palette is not a dict or list
 
             # build legend string: "Experiment — <label>"
-            if label != None:
-                exp_str = str(self.sample_information[exp_name].get('Experiment', exp_name))
-                label_val = str(self.sample_information[exp_name].get(label, ''))
-                legend_str = f"{exp_str} — {label_val}"
+            if label1 is not None:
+                label_val1 = str(self.sample_information[exp_name].get(label1, ''))
+                legend_str = f"{label_val1}"
+                if label2 is not None:
+                    label_val2 = str(self.sample_information[exp_name].get(label2, ''))
+                    legend_str = f"{label_val1} - {label_val2}"
+                    if label3 is not None:
+                        label_val3 = str(self.sample_information[exp_name].get(label3, ''))
+                        legend_str = f"{label_val1} - {label_val2} - {label_val3}"
 
             # plot points; give each point its legend entry
                 ax1.scatter(x_vals[i], mw_data[exp_name], label=legend_str, color=color, s=50, alpha=0.8)
@@ -808,12 +813,12 @@ class GPC_dataset:
         ax1.tick_params(axis='x', labelrotation=rotation)
         ax2.tick_params(axis='x', labelrotation=rotation)
         # show legend only if label parameter is provided
-        if label is not None:
+        if label1 is not None:
             ax1.legend()
             ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, noxlabel = True, unit='g/mol', xlabel='Experiment', label=None, rotation=75, figsize_boxplot=(10, 5)):
+    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, noxlabel = True, unit='g/mol', xlabel='Experiment', label1=None, label2=None, label3=None, rotation=75, figsize_boxplot=(10, 5)):
         """
         Plotting boxplots for Mw and Mn when multiple measurements exist per condition.
         
@@ -831,8 +836,8 @@ class GPC_dataset:
             Can be 'Milling Time (s)', 'Experiment', 'Mass of PP (g)', etc.
             Default is 'Experiment'.
             
-        label : str, optional
-            Field to use for color-coding different groups (e.g., 'Beads Type').
+        label1, label2, label3 : str, optional
+            Fields to use for color-coding different groups (e.g., 'Beads Type').
             If None, all boxes use default colors.
             Default is None.
             
@@ -876,27 +881,27 @@ class GPC_dataset:
         
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize_boxplot)
         
-        # Utiliser la palette pour attribuer une couleur à chaque boxplot
-        # On récupère les samples correspondant à chaque groupe pour trouver la couleur
-        sample_groups = {}  # Pour mapper x_val -> premier sample_name rencontré
+        # Use the palette to assign a color to each boxplot
+        # Retrieve samples for each group to determine the color
+        sample_groups = {}  # Maps x_val -> first encountered sample_name
         for sample_name in data.index:
             x_val = self.sample_information[sample_name][xlabel]
             if x_val not in sample_groups:
                 sample_groups[x_val] = sample_name
         
-        # Plot avec les couleurs de la palette
+        # Plot with palette colors
         for i, (x_val, mw_vals) in enumerate(mw_data.items()):
             sample_name = sample_groups[x_val]
             if unit == 'kg/mol':
                 mw_vals = [val / 1000 for val in mw_vals]
             
-            # Déterminer la couleur depuis la palette
+            # Determine color from palette
             if type(self.palette) == dict:
                 color = self.palette[self.sample_information[sample_name]['Experiment']]
             elif type(self.palette) == list:
                 color = self.palette[i % len(self.palette)]
             else:
-                color = "#461ae4"  # Couleur par défaut
+                color = "#461ae4"  # Default color
             
             bp1 = ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
                               patch_artist=True,
@@ -908,28 +913,35 @@ class GPC_dataset:
             if unit == 'kg/mol':
                 mn_vals = [val / 1000 for val in mn_vals]
             
-            # Déterminer la couleur depuis la palette
+            # Determine color from palette
             if type(self.palette) == dict:
                 color = self.palette[self.sample_information[sample_name]['Experiment']]
             elif type(self.palette) == list:
                 color = self.palette[i % len(self.palette)]
             else:
-                color = "#e41a1c"  # Couleur par défaut
+                color = "#e41a1c"  # Default color
 
             bp2 = ax2.boxplot([mn_vals], positions=[i], widths=0.4,
                               patch_artist=True,
                               boxprops=dict(facecolor=color, color=color, alpha=0.7),
                               medianprops=dict(color="black", linewidth=2))
         
-        # Créer une légende si label est spécifié
-        if label is not None:
+        # Create a legend if label1 is specified
+        if label1 is not None:
             from matplotlib.patches import Patch
-            # Collecter les combinaisons uniques de couleur et label
+            # Collect unique combinations of color and label
             unique_combos = {}
             for x_val in mw_data.index:
                 sample_name = sample_groups[x_val]
-                label_val = str(self.sample_information[sample_name].get(label, 'Unknown'))
-                
+                label_val1 = str(self.sample_information[sample_name].get(label1, 'Unknown'))
+                legend_str = f"{label_val1}"
+                if label2 is not None:
+                    label_val2 = str(self.sample_information[sample_name].get(label2, ''))
+                    legend_str = f"{label_val1} - {label_val2}"
+                    if label3 is not None:
+                        label_val3 = str(self.sample_information[sample_name].get(label3, ''))
+                        legend_str = f"{label_val1} - {label_val2} - {label_val3}"
+
                 if type(self.palette) == dict:
                     color = self.palette[self.sample_information[sample_name]['Experiment']]
                 elif type(self.palette) == list:
@@ -938,13 +950,13 @@ class GPC_dataset:
                 else:
                     color = "#461ae4"
                 
-                if label_val not in unique_combos:
-                    unique_combos[label_val] = color
+                if legend_str not in unique_combos:
+                    unique_combos[legend_str] = color
             
             legend_elements = [Patch(facecolor=color, label=lbl, alpha=0.7) 
                              for lbl, color in unique_combos.items()]
-            ax1.legend(handles=legend_elements, title=label)
-            ax2.legend(handles=legend_elements, title=label)
+            ax1.legend(handles=legend_elements, title=label1)
+            ax2.legend(handles=legend_elements, title=label1)
         
         # Set labels and ticks
         ax1.set_ylabel(rf'$\bf{{Mw}}\ \it{{({unit})}}$')
