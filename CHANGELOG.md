@@ -23,3 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [0.1.5]
 
 - Change plotting_Mw_Mn to have label1, label2 and label3 to futher personalize the graphs
+
+## [0.1.6]
+
+Cleaned up the code and incorporate pydantic to verify the variable
+- A new class was created GPCConfig for this purpose

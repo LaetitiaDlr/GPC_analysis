@@ -5,22 +5,25 @@ import math
 import numpy as np
 from typing import Literal
 from pydantic import BaseModel, model_validator
+
+ReportType = Literal['raw', 'excel']
+PolymerType = Literal['PP', 'PE']
 # import scipy.differentiate as spi
 
 
 class SampleInfo(BaseModel):
     Experiment: str
     Sample: str = ""
-    model_config = {"extra": "allow"}  # autorise les champs custom (Milling Time, etc.)
+    model_config = {"extra": "allow"}  # allow custom fields (Milling Time, etc.)
 
 
 class GPCConfig(BaseModel):
     filepath_dict: dict[str, str]
     sample_information: dict[str, SampleInfo]
-    report_type: Literal["raw", "excel"] = "raw"
+    report_type: ReportType = "raw"
     int_x_range: list[float] = [14, 26]
     baseline_window: list[float] = [10, 31]
-    polymer: Literal["PP", "PE"] = "PP"
+    polymer: PolymerType = "PP"
     density_polymer: int = 910
     palette: dict | None = None
 
@@ -109,11 +112,18 @@ class GPC_dataset:
     """
 
     def __init__(self, filepath_dict: dict, sample_information: dict,
-                palette: dict = None, report_type: str = 'raw',
-                int_x_range: list = [14, 26],
-                baseline_window: list = [10, 31],
-                polymer: str = 'PP',
-                density_polymer: int = 910):
+                palette: dict | None = None, report_type: ReportType = 'raw',
+                int_x_range: list[float] | None = None,
+                baseline_window: list[float] | None = None,
+                polymer: PolymerType = 'PP',
+                density_polymer: int = 910,
+                plotting_correction_intensity: bool = False,):
+        
+        if int_x_range is None:
+            int_x_range = [14.0, 26.0]
+        if baseline_window is None:
+            baseline_window = [10.0, 31.0]
+
         # Validate and parse all inputs via Pydantic
         cfg = GPCConfig(
             filepath_dict=filepath_dict,
@@ -126,6 +136,7 @@ class GPC_dataset:
             palette=palette,
         )
         self.int_x_range = cfg.int_x_range
+
         self.baseline_window = cfg.baseline_window
         self.filepath_dict = cfg.filepath_dict
         self.sample_information = {k: v.model_dump() for k, v in cfg.sample_information.items()}
@@ -144,14 +155,12 @@ class GPC_dataset:
         self.H_1 = (self.PS_alpha + 1) / (self.alpha + 1)
 
         # Setup color palette
-        self.colors = ['red', 'blue', 'green', 'orange', 'purple',
-                       'brown', 'pink', 'gray', 'olive', 'cyan']
         self.palette = self._create_default_palette() if cfg.palette is None else cfg.palette
 
         if self.report_type == 'excel':
             self._process_excel_data()
         else:
-            self._process_raw_data()
+            self._process_raw_data(plotting_correction_intensity=plotting_correction_intensity)
 
     def _create_default_palette(self):
         """Create default color palette if none provided."""
@@ -167,19 +176,19 @@ class GPC_dataset:
         self.data_Mn_Mw_software = self.extract_Mw_Mn_from_excel()
         self.data_Mn_Mw = self.calculate_Mn_Mw_from_MMD(self.data_MMD_all)
 
-    def _process_raw_data(self):
+    def _process_raw_data(self, plotting_correction_intensity: bool = False):
         """Process raw data."""
         self.data_raw = self.extract_raw_data(self.filepath_dict)
         self.data_converted = self.convert_ev_to_logM(self.data_raw)
         self.data_raw_corrected = self.raw_data_correction(
             self.data_converted, 
             columns_to_correct=['Concentration mg/mL'],
-            correction_plotting_intensity = False
+            plotting_correction_intensity = plotting_correction_intensity
         )
         self.data_MMD_all = self.calculate_MMD_from_raw_data()
         self.data_Mn_Mw = self.calculate_Mn_Mw_raw_data()
 
-    def calculate_Mn_Mw_raw_data(self, data_raw_corrected: dict = None):
+    def calculate_Mn_Mw_raw_data(self, data_raw_corrected: dict | None = None):
         """Calculate Mw, Mn, PDI, and M_max from corrected raw data.
          Parameters
          ----------
@@ -205,9 +214,10 @@ class GPC_dataset:
             
             PDI = Mw/Mn if Mn > 0 else 0
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
-        self.Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
-        self.Mn_Mw_from_raw.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
-        return self.Mn_Mw_from_raw
+        Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
+        Mn_Mw_from_raw.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
+
+        return Mn_Mw_from_raw
 
     def extract_raw_data(self, filepath_dict:dict):
         """Extract raw data from Excel files. Extracts concentration, retention volume and calibration data.
@@ -229,21 +239,21 @@ class GPC_dataset:
             try:
                 excel_file = pd.ExcelFile(path)
                 available_sheets = excel_file.sheet_names
-                
-                if 'Data' not in available_sheets:
-                    raise ValueError(
-                        f"❌ Sheet 'Data' not found in file: {file}\n"
-                        f"   File path: {path}\n"
-                        f"   Available sheets: {available_sheets}"
-                    )
-                
-                data_i = pd.read_excel(path, sheet_name='Data', header=0, index_col=0)
-                
             except FileNotFoundError:
                 raise FileNotFoundError(
                     f"❌ File not found: {file}\n"
                     f"   Path: {path}"
                 )
+
+            if 'Data' not in available_sheets:
+                raise ValueError(
+                    f"❌ Sheet 'Data' not found in file: {file}\n"
+                    f"   File path: {path}\n"
+                    f"   Available sheets: {available_sheets}"
+                )
+
+            try:
+                data_i = pd.read_excel(path, sheet_name='Data', header=0, index_col=0)
             except Exception as e:
                 raise Exception(
                     f"❌ Error reading file: {file}\n"
@@ -442,15 +452,13 @@ class GPC_dataset:
         for sample_name, df in data_extracted.items():
             df_i = df.copy()
             df_i = df_i.set_index('Elution Volume (mL)')
+            threshold = 0.0
+            baseline: pd.DataFrame = pd.DataFrame()
 
-            # df_i = df_i[(df_i.index >= min(x_range)) & (df_i.index <= max(x_range))]
-            baseline = None  # Initialize baseline outside the loop
-            threshold = None  # Initialize threshold outside the loop
-            
             for col in columns_to_correct:
             # making the baseline correction
                 baseline = self.straight_line_2points(baseline_window, df_i[col], average=average_baseline)
-                # baseline = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
+                
 
                 df_i[col] = df_i[col] - baseline['y']   # Correcting the data by subtracting the baseline
                 df_i.loc[df_i[col] < 0, col] = 0 # set negative values to 0
@@ -467,21 +475,21 @@ class GPC_dataset:
 
             if plotting_correction_MMD:# and baseline is not None and threshold is not None and axbaseline_MMD is not None:
                 # axbaseline_MMD.plot(df_i.index, df_i['MMD'], label = sample_name)
-                baseline_filtered = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
-                axbaseline_MMD.plot(baseline_filtered.index, baseline_filtered['y'], linestyle='--', alpha=0.5)
-                axbaseline_MMD.set_xlabel(r'$\bf{Elution\ time}\ \it{(min)}$')
-                axbaseline_MMD.set_ylabel(r'$\bf{MMD}\ \it{(a.u.)}$')
-                axbaseline_MMD.set_title(f'MMD Raw data corrected with threshold at {threshold} of max')
+                baseline_part = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
+                plt.plot(baseline_part.index, baseline_part['y'], linestyle='--', alpha=0.5)
+                plt.xlabel(r'$\bf{Elution\ time}\ \it{(min)}$')
+                plt.ylabel(r'$\bf{MMD}\ \it{(a.u.)}$')
+                plt.title(f'MMD Raw data corrected with threshold at {threshold} of max')
 
             if plotting_correction_intensity:# and baseline is not None and threshold is not None and axbaseline_intensity is not None:
-                baseline_filtered = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
-                axbaseline_intensity.plot(df_i.index, df_i['Concentration mg/mL'], linestyle='--')
-                axbaseline_intensity.plot(baseline_filtered.index, baseline_filtered['y'], linestyle='--', alpha=0.5)
-                axbaseline_intensity.set_xlabel(r'$\bf{Elution\ time}\ \it{(min)}$')
-                axbaseline_intensity.set_ylabel(r'$\bf{Intensity}\ \it{(mg/mL)}$')
-                axbaseline_intensity.set_title(f'Raw data corrected with threshold at {threshold} of max')
-                    
-                axbaseline_intensity.axhline(y = threshold, color='red', linestyle='--', label = 'threshold')
+                baseline_part = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
+                plt.plot(df_i.index, df_i['Concentration mg/mL'], linestyle='--')
+                plt.plot(baseline_part.index, baseline_part['y'], linestyle='--', alpha=0.5)
+                plt.xlabel(r'$\bf{Elution\ time}\ \it{(min)}$')
+                plt.ylabel(r'$\bf{Intensity}\ \it{(mg/mL)}$')
+                plt.title(f'Raw data corrected with threshold at {threshold} of max')
+                plt.axhline(y = threshold, color='red', linestyle='--', label = 'threshold')
+
             data_corrected[sample_name] = df_i
         return data_corrected
 
@@ -600,8 +608,8 @@ class GPC_dataset:
         print(f"Results saved in {filepath_saving}")
 
     def plotting_MMD_Mw(self, scale: str, 
-                        data_MMD: dict[str, pd.DataFrame] = None, 
-                        label1: str = 'Experiment', label2: str = None, label3: str = None, 
+                        data_MMD: dict[str, pd.DataFrame] | None = None, 
+                        label1: str = 'Experiment', label2: str | None = None, label3: str | None = None, 
                         figure_size: tuple = (6, 5), 
                         ax = None):
 
@@ -628,10 +636,11 @@ class GPC_dataset:
             Name of the figure file (without extension). Default is None.
         """
         if ax is None:
-
-            fig,ax = plt.subplots(figsize=figure_size)#, dpi=300)
+            fig, ax = plt.subplots(figsize=figure_size)
         else:
             fig = ax.get_figure()
+            if fig is None:
+                raise ValueError("The provided ax is not attached to a figure.")
 
         seen_labels = set()
         label_to_index = {}
@@ -675,7 +684,6 @@ class GPC_dataset:
             ax.set_xlabel(r'$\bf{M}\ \it{(g/mol)}$')
         else:
             ax.set_xlabel(r'$\bf{logM}\ \it{(g/mol)}$')
-        i=0
         ax.set_ylabel(r'$\bf{w(logM)}\ \it{(a.u.)}$')
         plt.legend()
         plt.tight_layout()
@@ -686,7 +694,7 @@ class GPC_dataset:
         """
         Plotting scatter plots for Mw and Mn.
         """
-        data_Mw_Mn_all = self.calculate_Mn_Mw_raw_data(xlabel=xlabel)
+        data_Mw_Mn_all = self.calculate_Mn_Mw_raw_data()
 
         mw_data = data_Mw_Mn_all['Mw[g/mol]']
         mn_data = data_Mw_Mn_all['Mn[g/mol]']
@@ -699,9 +707,10 @@ class GPC_dataset:
             else:
                 ax2 = fig.add_subplot(1, 2, 2)
 
+        assert ax1 is not None and ax2 is not None, "ax1 and ax2 must be defined"
+
         x_vals = []
         i=0
-
         for exp_name in mw_data.index:
             # get x-value from sample_information (e.g. Milling Time (s) or Experiment)
             x_val = self.sample_information[exp_name][xlabel]
@@ -740,10 +749,6 @@ class GPC_dataset:
         ax2.set_xlabel(f'{xlabel}')
 
         # set xticks using unique ordered values to avoid duplicate-tick issues
-        unique_x = []
-        for xv in x_vals:
-            if xv not in unique_x:
-                unique_x.append(xv)
         ax1.set_xticks(x_vals)
         ax1.set_xticklabels(x_vals)
         ax2.set_xticks(x_vals)
@@ -777,11 +782,7 @@ class GPC_dataset:
         to show the distribution of molecular weights for each group.
         
         Parameters
-        ----------
-        data_Mw_Mn_all : DataFrame
-            DataFrame containing Mw and Mn data for all samples.
-            Should be obtained from calculate_Mn_Mw_raw_data().
-            
+        ----------           
         xlabel : str, optional
             Field to group by and use as x-axis labels.
             Can be 'Milling Time (s)', 'Experiment', 'Mass of PP (g)', etc.
@@ -821,20 +822,18 @@ class GPC_dataset:
         ... )
         """
         # Calculate data with proper grouping
-        data = self.calculate_Mn_Mw_raw_data(xlabel=xlabel)
+        data = self.calculate_Mn_Mw_raw_data()
         
         # Group data by xlabel field
-        mw_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
-        mn_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
+        molar_mass_grouped = data.groupby(data.index.map(lambda x: self.sample_information[x][xlabel]))
         
-        mw_data = mw_grouped['Mw[g/mol]'].apply(list)
-        mn_data = mn_grouped['Mn[g/mol]'].apply(list)
+        mw_data = molar_mass_grouped['Mw[g/mol]'].apply(list)
+        mn_data = molar_mass_grouped['Mn[g/mol]'].apply(list)
         
         if ax1 is None and ax2 is None:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figure_size)
         elif ax1 is not None:
             fig = ax1.get_figure()
-            fig_1_size = (figure_size[0] / 2, figure_size[1])
             if ax2 is None:
                 if len(fig.axes) > 1:
                     ax2 = fig.axes[1]
@@ -842,12 +841,12 @@ class GPC_dataset:
                     ax2 = fig.add_subplot(1, 2, 2)
             else:
                 fig = ax2.get_figure()
-                fig_2_size = (figure_size[0] / 2, figure_size[1])
-                if ax1 is None:
-                    if len(fig.axes) > 1:
-                        ax1 = fig.axes[0]
-                    else:
-                        ax1 = fig.add_subplot(1, 2, 1)
+                if len(fig.axes) > 1:
+                    ax1 = fig.axes[0]
+                else:
+                    ax1 = fig.add_subplot(1, 2, 1)
+
+        assert ax1 is not None and ax2 is not None, "ax1 and ax2 must be defined"
 
         # Use the palette to assign a color to each boxplot
         # Retrieve samples for each group to determine the color
@@ -871,7 +870,7 @@ class GPC_dataset:
             else:
                 color = "#461ae4"  # Default color
             
-            bp1 = ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
+            ax1.boxplot([mw_vals], positions=[i], widths=0.4, 
                               patch_artist=True,
                               boxprops=dict(facecolor=color, color=color, alpha=0.7),
                               medianprops=dict(color="black", linewidth=2))
@@ -889,7 +888,7 @@ class GPC_dataset:
             else:
                 color = "#e41a1c"  # Default color
 
-            bp2 = ax2.boxplot([mn_vals], positions=[i], widths=0.4,
+            ax2.boxplot([mn_vals], positions=[i], widths=0.4,
                               patch_artist=True,
                               boxprops=dict(facecolor=color, color=color, alpha=0.7),
                               medianprops=dict(color="black", linewidth=2))
@@ -944,7 +943,7 @@ class GPC_dataset:
         ax2.set_xticklabels(mn_data.index, rotation=rotation)
         
         plt.tight_layout()
-        return fig, ax1, ax2
+        return fig, ax1, ax2 # type: ignore
     """
     If the report used is the 'excel report', hence use the processed and calculated MMD vs LogM and Mw, Mn from the software directly 
     (will be more dependant on the baseline choosen by the user on the software)
