@@ -3,7 +3,37 @@ import pandas as pd
 import os
 import math
 import numpy as np
+from typing import Literal
+from pydantic import BaseModel, model_validator
 # import scipy.differentiate as spi
+
+
+class SampleInfo(BaseModel):
+    Experiment: str
+    Sample: str = ""
+    model_config = {"extra": "allow"}  # autorise les champs custom (Milling Time, etc.)
+
+
+class GPCConfig(BaseModel):
+    filepath_dict: dict[str, str]
+    sample_information: dict[str, SampleInfo]
+    report_type: Literal["raw", "excel"] = "raw"
+    int_x_range: list[float] = [14, 26]
+    baseline_window: list[float] = [10, 31]
+    polymer: Literal["PP", "PE"] = "PP"
+    density_polymer: int = 910
+    palette: dict | None = None
+
+    @model_validator(mode="after")
+    def keys_must_match(self):
+        if set(self.filepath_dict) != set(self.sample_information):
+            missing_info = set(self.filepath_dict) - set(self.sample_information)
+            missing_path = set(self.sample_information) - set(self.filepath_dict)
+            raise ValueError(
+                f"Keys mismatch — missing in sample_information: {missing_info}, "
+                f"missing in filepath_dict: {missing_path}"
+            )
+        return self
 
 class GPC_dataset:
     """
@@ -78,147 +108,50 @@ class GPC_dataset:
     >>> gpc = GPC_dataset(filepath_dict, sample_info, report_type='raw')
     """
 
-    def __init__(self, filepath_dict, sample_information,
-                palette=None, report_type='raw',
-                int_x_range=[14, 26], baseline_window = [10, 31], 
-                polymer = 'PP',
-                density_polymer = 910):
-        """
-        Initialize GPC dataset analysis.
-        
-        Parameters
-        ----------
-        filepath_dict : dict
-            Dictionary mapping sample names to their file paths.
-            Keys must match those in sample_information.
-            
-        sample_information : dict
-            Dictionary mapping sample names to metadata dictionaries.
-            Each sample dict must contain at least 'Experiment' key.
-            Keys must match those in filepath_dict.
-            
-        palette : dict, optional
-            Custom color palette for plots. If None, auto-generated.
-            
-        report_type : str, optional
-            'raw' for raw data processing or 'excel' for pre-processed data.
-            Default is 'raw'.
-            
-        Raises
-        ------
-        ValueError
-            If inputs fail validation checks.
-        """
-        # Validate inputs
-        self._validate_inputs(filepath_dict, sample_information, report_type)
-        # for integration 
-        self.int_x_range = int_x_range
-        self.baseline_window = baseline_window
-        self.filepath_dict = filepath_dict
-        self.sample_information = sample_information
-        self.report_type = report_type
+    def __init__(self, filepath_dict: dict, sample_information: dict,
+                palette: dict = None, report_type: str = 'raw',
+                int_x_range: list = [14, 26],
+                baseline_window: list = [10, 31],
+                polymer: str = 'PP',
+                density_polymer: int = 910):
+        # Validate and parse all inputs via Pydantic
+        cfg = GPCConfig(
+            filepath_dict=filepath_dict,
+            sample_information=sample_information,
+            report_type=report_type,
+            int_x_range=int_x_range,
+            baseline_window=baseline_window,
+            polymer=polymer,
+            density_polymer=density_polymer,
+            palette=palette,
+        )
+        self.int_x_range = cfg.int_x_range
+        self.baseline_window = cfg.baseline_window
+        self.filepath_dict = cfg.filepath_dict
+        self.sample_information = {k: v.model_dump() for k, v in cfg.sample_information.items()}
+        self.report_type = cfg.report_type
+
         # Mark-Houwink parameters
         self.PS_alpha, self.PS_K = 0.722, 0.000102
-        if polymer == 'PP':
+        if cfg.polymer == 'PP':
             self.alpha, self.K = 0.725, 0.000190
-            self.density_polymer = density_polymer  # g/L
-        elif polymer == 'PE':
+        else:  # PE
             self.alpha, self.K = 0.725, 0.00044160
-            self.density_polymer = density_polymer
-        else:
-            raise ValueError(f"Unsupported polymer type: {polymer}. Supported types are 'PP' and 'PE'.")
-        
+        self.density_polymer = cfg.density_polymer
+
         # Calculate conversion factors
-        self.H_0 = (math.log10(self.PS_K) - math.log10(self.K))/(self.alpha+1)
-        self.H_1 = (self.PS_alpha+1)/(self.alpha+1)
+        self.H_0 = (math.log10(self.PS_K) - math.log10(self.K)) / (self.alpha + 1)
+        self.H_1 = (self.PS_alpha + 1) / (self.alpha + 1)
 
         # Setup color palette
         self.colors = ['red', 'blue', 'green', 'orange', 'purple',
-               'brown', 'pink', 'gray', 'olive', 'cyan']
-        if palette is None:
-            self.palette = self._create_default_palette()
-        else:
-            self.palette = palette
-        # Process data based on report type
+                       'brown', 'pink', 'gray', 'olive', 'cyan']
+        self.palette = self._create_default_palette() if cfg.palette is None else cfg.palette
 
-
-        if report_type == 'excel':
+        if self.report_type == 'excel':
             self._process_excel_data()
-        else:  # raw
+        else:
             self._process_raw_data()
-
-    def _validate_inputs(self, filepath_dict, sample_information, report_type):
-        """
-        Validate input parameters for GPC_dataset initialization.
-        
-        Parameters
-        ----------
-        filepath_dict : dict
-            Dictionary mapping sample names to file paths
-        sample_information : dict
-            Dictionary mapping sample names to metadata dictionaries
-        report_type : str
-            Type of report ('raw' or 'excel')
-            
-        Raises
-        ------
-        TypeError
-            If inputs are not of expected types
-        ValueError
-            If dictionaries are empty, keys don't match, or required fields are missing
-        """
-        # Check types
-        if not isinstance(filepath_dict, dict):
-            raise TypeError(f"filepath_dict must be a dictionary, got {type(filepath_dict).__name__}")
-        
-        if not isinstance(sample_information, dict):
-            raise TypeError(f"sample_information must be a dictionary, got {type(sample_information).__name__}")
-        
-        if not isinstance(report_type, str):
-            raise TypeError(f"report_type must be a string, got {type(report_type).__name__}")
-        
-        # Check that dictionaries are not empty
-        if not filepath_dict:
-            raise ValueError("filepath_dict cannot be empty. Provide at least one sample file.")
-        
-        if not sample_information:
-            raise ValueError("sample_information cannot be empty. Provide metadata for all samples.")
-        
-        # Check that keys match between filepath_dict and sample_information
-        filepath_keys = set(filepath_dict.keys())
-        sample_keys = set(sample_information.keys())
-        
-        if filepath_keys != sample_keys:
-            missing_in_sample_info = filepath_keys - sample_keys
-            missing_in_filepath = sample_keys - filepath_keys
-            
-            error_msg = "Sample names must match between filepath_dict and sample_information.\n"
-            if missing_in_sample_info:
-                error_msg += f"  Missing in sample_information: {missing_in_sample_info}\n"
-            if missing_in_filepath:
-                error_msg += f"  Missing in filepath_dict: {missing_in_filepath}\n"
-            raise ValueError(error_msg)
-        
-        # Check that each sample has required 'Experiment' field
-        for sample_name, info in sample_information.items():
-            if not isinstance(info, dict):
-                raise TypeError(
-                    f"sample_information['{sample_name}'] must be a dictionary, "
-                    f"got {type(info).__name__}"
-                )
-            
-            if 'Experiment' not in info:
-                raise ValueError(
-                    f"sample_information['{sample_name}'] must contain 'Experiment' key.\n"
-                    f"Expected structure: {{'Experiment': str, 'Sample': str, ...}}\n"
-                    f"Got keys: {list(info.keys())}"
-                )
-        
-        # Check report_type value
-        if report_type not in ['raw', 'excel']:
-            raise ValueError(
-                f"report_type must be 'raw' or 'excel', got '{report_type}'"
-            )
 
     def _create_default_palette(self):
         """Create default color palette if none provided."""
@@ -246,7 +179,7 @@ class GPC_dataset:
         self.data_MMD_all = self.calculate_MMD_from_raw_data()
         self.data_Mn_Mw = self.calculate_Mn_Mw_raw_data()
 
-    def calculate_Mn_Mw_raw_data(self, xlabel='Experiment', data_raw_corrected=None):
+    def calculate_Mn_Mw_raw_data(self, data_raw_corrected: dict = None):
         """Calculate Mw, Mn, PDI, and M_max from corrected raw data.
          Parameters
          ----------
@@ -258,7 +191,8 @@ class GPC_dataset:
              DataFrame containing Mw, Mn, PDI, and M_max for each sample.
          """
         Mn_Mw_from_raw = {}
-        data_raw_corrected = data_raw_corrected.copy() if data_raw_corrected is not None else self.data_raw_corrected.copy()
+        data = self.data_raw_corrected if data_raw_corrected is None else data_raw_corrected
+        data_raw_corrected = data.copy()
         for sample_name, df in data_raw_corrected.items():
             intensity = df['Concentration mg/mL']
             logMi = df['LogM']
@@ -270,13 +204,12 @@ class GPC_dataset:
             
             
             PDI = Mw/Mn if Mn > 0 else 0
-            # info = self.sample_information[sample_name][xlabel]
             Mn_Mw_from_raw[sample_name] = [Mw, Mn, PDI, M_max]
         self.Mn_Mw_from_raw = pd.DataFrame(Mn_Mw_from_raw).T
         self.Mn_Mw_from_raw.columns = ['Mw[g/mol]', 'Mn[g/mol]', 'PDI', 'M_max[g/mol]']
         return self.Mn_Mw_from_raw
 
-    def extract_raw_data(self, filepath_dict):
+    def extract_raw_data(self, filepath_dict:dict):
         """Extract raw data from Excel files. Extracts concentration, retention volume and calibration data.
         Parameters
         ----------
@@ -386,7 +319,7 @@ class GPC_dataset:
                 df.index = df[xlabel]
             if xlabel == 'LogM':
                 ax.set_xscale('log')
-            ax.plot(df.index, df[ylabel], label = sample_name)#, color = self.palette[self.label[sample_name]])
+            ax.plot(df.index, df[ylabel], label = sample_name)
         int_range = self.int_x_range
         baseline_range = self.baseline_window
         ax.set_xlabel(f'{xlabel}', fontweight='bold')
@@ -394,7 +327,6 @@ class GPC_dataset:
         ax.axvline(x=max(baseline_range), color='red', linestyle='--')
         ax.axvline(x=min(baseline_range), color='red',linestyle='--')
         ax.axvline(x=min(int_range), color='black', linestyle='--')
-        # ax.set_xlim(1,31)
         ax.set_ylabel(r'$\bf{Intensity}\ \it{(mg/mL)}$')
         ax.set_title('Raw data, integration range between black lines and baseline calculated between the two red lines')
         plt.legend()
@@ -448,7 +380,7 @@ class GPC_dataset:
         straight_line = pd.DataFrame({'y': y_vals}, index=df.index)
         return straight_line
 
-    def keep_largest_non_nan_block(self, df, col):
+    def keep_largest_non_nan_block(self, df: pd.DataFrame, col: str):
         """Keep the largest non-NaN block in a DataFrame column. Used after thresholding to retain the main peak."""
         mask = df[col].notna()
 
@@ -468,10 +400,11 @@ class GPC_dataset:
         return df[block_ids == largest_block_id]
 
 
-    def raw_data_correction(self, data_extracted, columns_to_correct = ['MMD', 'Concentration mg/mL'], average_baseline = True, 
-                            # threshold_at = 0.003, 
+    def raw_data_correction(self, data_extracted: dict[str, pd.DataFrame], 
+                            columns_to_correct = ['MMD', 'Concentration mg/mL'], 
+                            average_baseline = True, 
                             replace_by = np.nan, 
-                            correction_plotting_MMD = False, correction_plotting_intensity = False):
+                            plotting_correction_MMD = False, plotting_correction_intensity = False):
         """Correct raw data by baseline subtraction and thresholding. The thresholding is done based on the noise level in the baseline region, keeping only the largest non-NaN block after thresholding.
         Parameters
         ----------
@@ -501,9 +434,9 @@ class GPC_dataset:
         x_range = self.int_x_range
         baseline_window = self.baseline_window
         
-        if correction_plotting_MMD:
+        if plotting_correction_MMD:
             figbaseline_MMD, axbaseline_MMD = plt.subplots(figsize=(6, 5))
-        if correction_plotting_intensity:
+        if plotting_correction_intensity:
             figbaseline_intensity, axbaseline_intensity = plt.subplots(figsize=(6, 5))
 
         for sample_name, df in data_extracted.items():
@@ -524,7 +457,7 @@ class GPC_dataset:
                 df_noise = df_i[(df_i.index >= min(baseline_window)) & (df_i.index <= min(x_range))] #looking for the noise in the first minute of elution
 
                 df_i = df_i[(df_i.index >= min(x_range)) & (df_i.index <= max(x_range))]
-                if correction_plotting_intensity and axbaseline_intensity is not None:
+                if plotting_correction_intensity and axbaseline_intensity is not None:
                     axbaseline_intensity.plot(df_i.index, df_i[col], linestyle='-')
                 max_noise = abs(df_noise[col].max())# * 1.5
                 threshold = max_noise 
@@ -532,7 +465,7 @@ class GPC_dataset:
                 df_i.loc[df_i[col] < threshold, col] = replace_by
                 df_i = self.keep_largest_non_nan_block(df_i, col)
 
-            if correction_plotting_MMD and baseline is not None and threshold is not None and axbaseline_MMD is not None:
+            if plotting_correction_MMD:# and baseline is not None and threshold is not None and axbaseline_MMD is not None:
                 # axbaseline_MMD.plot(df_i.index, df_i['MMD'], label = sample_name)
                 baseline_filtered = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
                 axbaseline_MMD.plot(baseline_filtered.index, baseline_filtered['y'], linestyle='--', alpha=0.5)
@@ -540,7 +473,7 @@ class GPC_dataset:
                 axbaseline_MMD.set_ylabel(r'$\bf{MMD}\ \it{(a.u.)}$')
                 axbaseline_MMD.set_title(f'MMD Raw data corrected with threshold at {threshold} of max')
 
-            if correction_plotting_intensity and baseline is not None and threshold is not None and axbaseline_intensity is not None:
+            if plotting_correction_intensity:# and baseline is not None and threshold is not None and axbaseline_intensity is not None:
                 baseline_filtered = baseline[(baseline.index >= min(x_range)) & (baseline.index <= max(x_range))]
                 axbaseline_intensity.plot(df_i.index, df_i['Concentration mg/mL'], linestyle='--')
                 axbaseline_intensity.plot(baseline_filtered.index, baseline_filtered['y'], linestyle='--', alpha=0.5)
@@ -572,17 +505,16 @@ class GPC_dataset:
             figintensity, axintensity = plt.subplots(figsize=(6, 5))
         data_corrected = self.raw_data_correction(self.data_converted, columns_to_correct=['Concentration mg/mL'], replace_by=np.nan)
         for sample_name, df in data_corrected.items():
-            # df_i = df.set_index('LogM').copy()
-            # MMD_i = df_i[['MMD']].copy()
-            # axintensity.plot(MMD_i['MMD'], marker='o', label = sample_name, markersize=1)
-            # data_MMD[sample_name] = MMD_i
 
             if df.index.name != 'Elution Volume (mL)':
                 df = df.set_index('Elution Volume (mL)')
+
             #From intensity now
             for_MMD = df[['LogM', 'Concentration mg/mL']].copy()
+
             #Will take the index as x axis for the gradient (derivative)
             x = pd.to_numeric(for_MMD.index, errors='coerce')
+
             #will now assign a new column _x , drop the NaN and sort the values according to _x
             for_MMD = for_MMD.assign(_x=x).dropna(subset=['_x']).sort_values('_x')
             
@@ -612,7 +544,7 @@ class GPC_dataset:
             axintensity.set_title('from raw data')
         return data_MMD
     
-    def save_results_to_csv(self, filepath_saving):
+    def save_results_to_csv(self, filepath_saving: str):
         """
         Save results to separate CSV files:
         - One CSV per sample for MMD data
@@ -667,7 +599,11 @@ class GPC_dataset:
 
         print(f"Results saved in {filepath_saving}")
 
-    def plotting_MMD_Mw(self, scale, data_MMD=None, label1 = 'Experiment', label2 = None, label3 = None, figure_size=(6,5), write_title=False, fig_title=None, Mn_plotting=False, zoom_windows_x=None, zoom_windows_y=None, filepath_figure_saving=None, fig_name_saving=None):
+    def plotting_MMD_Mw(self, scale: str, 
+                        data_MMD: dict[str, pd.DataFrame] = None, 
+                        label1: str = 'Experiment', label2: str = None, label3: str = None, 
+                        figure_size: tuple = (6, 5), 
+                        ax = None):
 
         """
         Plotting Molar Mass Distribution (MMD) against Molar Mass (Mw).
@@ -691,9 +627,12 @@ class GPC_dataset:
         fig_name_saving : str, optional
             Name of the figure file (without extension). Default is None.
         """
+        if ax is None:
 
-        fig,ax = plt.subplots(figsize=figure_size)#, dpi=300)
-        #data_MMD_all = {}
+            fig,ax = plt.subplots(figsize=figure_size)#, dpi=300)
+        else:
+            fig = ax.get_figure()
+
         seen_labels = set()
         label_to_index = {}
 
@@ -738,14 +677,12 @@ class GPC_dataset:
             ax.set_xlabel(r'$\bf{logM}\ \it{(g/mol)}$')
         i=0
         ax.set_ylabel(r'$\bf{w(logM)}\ \it{(a.u.)}$')
-        
+        plt.legend()
         plt.tight_layout()
-        plt.legend()#bbox_to_anchor=(1.04,0.5), loc='center left')
-        plt.grid(visible=True, which='both', axis='both', linestyle='--', linewidth=0.5)
-        
+
         return fig, ax
 
-    def plotting_Mw_Mn_scatter(self, data_Mw_Mn_all, xlabel = 'Experiment', label1=None, label2=None, label3=None, rotation=75, figure_size=(8,5)):
+    def plotting_Mw_Mn_scatter(self, xlabel = 'Experiment', label1=None, label2=None, label3=None, rotation=75, figure_size=(8,5), ax1 = None, ax2 = None):
         """
         Plotting scatter plots for Mw and Mn.
         """
@@ -753,7 +690,15 @@ class GPC_dataset:
 
         mw_data = data_Mw_Mn_all['Mw[g/mol]']
         mn_data = data_Mw_Mn_all['Mn[g/mol]']
-        fig, (ax1,ax2) = plt.subplots(1,2,figsize=figure_size)
+        if ax1 is None:
+            fig, (ax1,ax2) = plt.subplots(1,2,figsize=figure_size)
+        else:
+            fig = ax1.get_figure()
+            if len(fig.axes) > 1:
+                ax2 = fig.axes[1]
+            else:
+                ax2 = fig.add_subplot(1, 2, 2)
+
         x_vals = []
         i=0
 
@@ -818,7 +763,13 @@ class GPC_dataset:
             ax2.legend()
         return fig, ax1, ax2
     
-    def plotting_Mw_Mn_boxplot(self, data_Mw_Mn_all, noxlabel = True, unit='g/mol', xlabel='Experiment', label1=None, label2=None, label3=None, rotation=75, figsize_boxplot=(10, 5)):
+    def plotting_Mw_Mn_boxplot(self, noxlabel = True, 
+                               unit='g/mol', 
+                               xlabel='Experiment', 
+                               label1=None, label2=None, label3=None, 
+                               rotation=75, 
+                               figure_size=(10, 5), 
+                               ax1 = None, ax2 = None):
         """
         Plotting boxplots for Mw and Mn when multiple measurements exist per condition.
         
@@ -879,8 +830,25 @@ class GPC_dataset:
         mw_data = mw_grouped['Mw[g/mol]'].apply(list)
         mn_data = mn_grouped['Mn[g/mol]'].apply(list)
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize_boxplot)
-        
+        if ax1 is None and ax2 is None:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figure_size)
+        elif ax1 is not None:
+            fig = ax1.get_figure()
+            fig_1_size = (figure_size[0] / 2, figure_size[1])
+            if ax2 is None:
+                if len(fig.axes) > 1:
+                    ax2 = fig.axes[1]
+                else:
+                    ax2 = fig.add_subplot(1, 2, 2)
+            else:
+                fig = ax2.get_figure()
+                fig_2_size = (figure_size[0] / 2, figure_size[1])
+                if ax1 is None:
+                    if len(fig.axes) > 1:
+                        ax1 = fig.axes[0]
+                    else:
+                        ax1 = fig.add_subplot(1, 2, 1)
+
         # Use the palette to assign a color to each boxplot
         # Retrieve samples for each group to determine the color
         sample_groups = {}  # Maps x_val -> first encountered sample_name
