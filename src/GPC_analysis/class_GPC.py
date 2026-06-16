@@ -165,7 +165,7 @@ class GPC_dataset:
     def _create_default_palette(self):
         """Create default color palette if none provided."""
         palette = {}
-        colors = plt.cm.get_cmap('tab10', len(self.filepath_dict))
+        colors = plt.colormaps['tab10'].resampled(len(self.filepath_dict))
         for i, file in enumerate(self.filepath_dict.keys()):
             palette[file] = colors(i)
         return palette
