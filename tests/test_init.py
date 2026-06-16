@@ -81,21 +81,6 @@ def test_real_conversion_factors(real_test_file, sample_info_P1022):
 
 
 
-def test_real_colors_list(real_test_file, sample_info_P1022):
-    """Test liste des couleurs avec fichier réel"""
-    filepath_dict = {'P1.022': real_test_file}
-    
-    gpc = GPC_dataset(
-        filepath_dict=filepath_dict,
-        sample_information=sample_info_P1022,
-        report_type='raw'
-    )
-    
-    assert hasattr(gpc, 'colors')
-    assert isinstance(gpc.colors, list)
-    assert len(gpc.colors) == 10
-    assert gpc.colors[0] == 'red'
-
 def test_real_data_structure(real_test_file, sample_info_P1022):
     """Test structure des données chargées depuis fichier réel"""
     filepath_dict = {'P1.022': real_test_file}

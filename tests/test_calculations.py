@@ -86,7 +86,7 @@ def test_calculate_Mn_Mw_raw_data(gpc_dataset):
     
     # Calculate Mn and Mw
     try:
-        result = gpc_dataset.calculate_Mn_Mw_raw_data(xlabel='Experiment')
+        result = gpc_dataset.calculate_Mn_Mw_raw_data()
         
         # Verifications
         assert isinstance(result, pd.DataFrame), "Result should be a DataFrame"
